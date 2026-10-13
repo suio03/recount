@@ -172,7 +172,10 @@ function Dashboard({
     <>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
         <Overview scope={scope} />
-        <ReadingPanel scope={scope} onShow={onShow} />
+        {/* The overview sets the row height; a longer reading scrolls inside it. */}
+        <div className="relative min-h-0">
+          <ReadingPanel scope={scope} onShow={onShow} />
+        </div>
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
         <BreakdownPanel

@@ -12,6 +12,8 @@ export interface TrendChartProps {
   /** Name of the plotted metric, used in the tooltip and the accessible label. */
   metric: string
   format?: (value: number) => string
+  /** Formats revenue in the tooltip; set when the data carries revenue. */
+  formatRevenue?: (revenue: number) => string
   /** AI annotations pinned to a point; `n` matches the InsightNote number. */
   annotations?: Array<{ index: number; n: number }>
   height?: number
@@ -39,6 +41,7 @@ export function TrendChart({
   data,
   metric,
   format = (v) => v.toLocaleString('en'),
+  formatRevenue,
   annotations = [],
   height = 240,
 }: TrendChartProps) {
@@ -194,6 +197,15 @@ export function TrendChart({
             {metric}
             <span className="ml-auto pl-3 font-medium tabular-nums">{format(point.value)}</span>
           </span>
+          {formatRevenue && point.revenue !== undefined && (
+            <span className="flex items-center gap-2 whitespace-nowrap">
+              <span className="size-2 rounded-full bg-revenue" aria-hidden="true" />
+              Revenue
+              <span className="ml-auto pl-3 font-medium tabular-nums">
+                {formatRevenue(point.revenue)}
+              </span>
+            </span>
+          )}
         </div>
       )}
     </div>

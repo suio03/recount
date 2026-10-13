@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { clickhouse } from './db/clickhouse'
 import { db, sql } from './db/postgres'
-import { sites } from './db/schema'
+import { readings, sites } from './db/schema'
+import { type PaymentInput, recordPayments } from './revenue/record'
 
 // Fills a demo site with 60 days of synthetic traffic so the dashboard can be developed without
 // real data. Safe to rerun: it replaces the demo site's events and touches no other site.
@@ -25,6 +27,12 @@ const pick = <T>(weighted: Array<[T, number]>): T => {
   }
   return (weighted.at(-1) as [T, number])[0]
 }
+// Revenue: a $49 featured listing bought after a submission, and a $19/month Pro plan.
+const LISTING = 4900
+const PRO = 1900
+/** Chance a multi-page session starts Pro; AI assistant visitors browse more and buy less. */
+const PRO_RATE: Record<string, number> = { 'Organic Search': 0.006, 'AI Assistant': 0.0015 }
+
 const id = () => Math.floor(random() * 2 ** 32) * 2 ** 20 + Math.floor(random() * 2 ** 20)
 
 const SOURCES: Array<[{ referrer: string; channel: string; campaign?: string }, number]> = [
@@ -71,12 +79,18 @@ async function main() {
   await db.insert(sites).values({ domain: DOMAIN, name: 'Demo' }).onConflictDoNothing()
   const site = await db.query.sites.findFirst({ where: (s, { eq }) => eq(s.domain, DOMAIN) })
   if (!site) throw new Error('demo site missing')
-  await clickhouse.command({
-    query: 'DELETE FROM events WHERE site_id = {site:UUID}',
-    query_params: { site: site.id },
-  })
+  // Cached readings describe the old data.
+  await db.delete(readings).where(eq(readings.siteId, site.id))
+  for (const table of ['events', 'payments'])
+    await clickhouse.command({
+      query: `DELETE FROM ${table} WHERE site_id = {site:UUID}`,
+      query_params: { site: site.id },
+    })
 
   const rows: Array<Record<string, unknown>> = []
+  const payments: PaymentInput[] = []
+  const pay = (input: Omit<PaymentInput, 'provider' | 'paymentId'>) =>
+    payments.push({ provider: 'demo', paymentId: `demo_${payments.length + 1}`, ...input })
   const today = Date.UTC(
     new Date().getUTCFullYear(),
     new Date().getUTCMonth(),
@@ -128,13 +142,37 @@ async function main() {
           pathname: '/tools/cursor',
         })
       }
+      const ids = { visitorId: BigInt(session.visitor_id), sessionId: BigInt(session.session_id) }
       if (random() < 0.01) {
         rows.push({ ...session, timestamp: at(), name: 'Submission Sent', pathname: '/submit' })
+        if (random() < 0.6) {
+          const customerId = `cus_${id()}`
+          at()
+          pay({ ...ids, customerId, kind: 'new', amount: LISTING, timestamp: new Date(t) })
+          if (random() < 0.05) {
+            const refundAt = new Date(t + 3 * 86_400_000)
+            if (refundAt.getTime() < Date.now())
+              pay({ customerId, kind: 'refund', amount: -LISTING, timestamp: refundAt })
+          }
+        }
+      }
+      if (views > 1 && random() < (PRO_RATE[source.channel] ?? 0.004)) {
+        const customerId = `cus_${id()}`
+        at()
+        pay({ ...ids, customerId, kind: 'new', amount: PRO, timestamp: new Date(t) })
+        // Monthly renewals carry no tracker ids; they inherit the first payment's session.
+        for (let r = t + 30 * 86_400_000; r < Date.now(); r += 30 * 86_400_000)
+          if (random() < 0.85)
+            pay({ customerId, kind: 'renewal', amount: PRO, timestamp: new Date(r) })
+          else break
       }
     }
   }
   await clickhouse.insert({ table: 'events', values: rows, format: 'JSONEachRow' })
-  console.log(`seeded ${rows.length} events for ${DOMAIN} (${site.id})`)
+  await recordPayments(site, payments)
+  console.log(
+    `seeded ${rows.length} events and ${payments.length} payments for ${DOMAIN} (${site.id})`,
+  )
   await sql.end()
   await clickhouse.close()
 }

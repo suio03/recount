@@ -16,6 +16,10 @@ import type { ElementContext, EventPayload, IdentityMode } from '@recount/shared
  *   data-rc-section="Name"  Names a region; clicks inside it carry the section name.
  *   data-rc-mask            Element text inside is never sent.
  *   <meta name="recount:page-type" content="pricing">  Semantic page type.
+ *
+ * Revenue attribution: put `recount.ids()` in the checkout's custom data (Paddle `customData`,
+ * Stripe `metadata`). A server that creates the checkout can read the `rc_vid` and `rc_sid`
+ * cookies instead.
  */
 
 type Props = Record<string, string | number | boolean>
@@ -201,11 +205,26 @@ history.pushState = function (...args: Parameters<History['pushState']>) {
 window.addEventListener('popstate', pageview)
 document.addEventListener('click', onClick, { capture: true })
 
+interface Recount {
+  (name: string, options?: { props?: Props }): void
+  /** The visitor and session ids to attach to a checkout; empty in cookieless mode. */
+  ids(): { recount_vid?: string; recount_sid?: string }
+}
+
 declare global {
   interface Window {
-    recount?: (name: string, options?: { props?: Props }) => void
+    recount?: Recount
   }
 }
-window.recount = (name, options) => send(name, { props: options?.props })
+window.recount = Object.assign(
+  (name: string, options?: { props?: Props }) => send(name, { props: options?.props }),
+  {
+    ids() {
+      if (mode !== 'cookie') return {}
+      const { vid, sid } = identity()
+      return { recount_vid: vid, recount_sid: sid }
+    },
+  },
+)
 
 pageview()

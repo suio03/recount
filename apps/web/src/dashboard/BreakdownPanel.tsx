@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, type Dimension, type Scope } from '../api'
+import { api, type Breakdown, type Dimension, type Scope } from '../api'
 import { BreakdownList, type BreakdownRow } from '../ui/BreakdownList'
 import { Panel } from '../ui/Panel'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { MONO_FILTERS } from './filters'
-import { countryName } from './format'
+import { countryName, money } from './format'
 
 export interface DimensionOption {
   value: Dimension
@@ -15,10 +15,19 @@ export interface DimensionOption {
   column: string
 }
 
-function toRow(dimension: Dimension, value: string, visitors: number): BreakdownRow {
+function toRow(
+  dimension: Dimension,
+  { value, visitors, revenue }: Breakdown['rows'][number],
+): BreakdownRow {
   if (dimension === 'country')
-    return { key: value, label: countryName(value), hint: value, visitors }
-  return { key: value, label: value, mono: MONO_FILTERS.has(dimension), visitors }
+    return { key: value, label: countryName(value), hint: value, visitors, revenue }
+  return { key: value, label: value, mono: MONO_FILTERS.has(dimension), visitors, revenue }
+}
+
+/** A revenue formatter when any row earned something, so sites without payments show no column. */
+function revenueFormat({ rows, currency }: Breakdown) {
+  if (!rows.some((r) => r.revenue)) return undefined
+  return (revenue: number) => money(revenue, currency)
 }
 
 /** One panel of ranked rows, optionally with tabs that switch the dimension. */
@@ -66,7 +75,8 @@ export function BreakdownPanel({
       ) : (
         <BreakdownList
           dimension={current.column}
-          rows={data.data.rows.map((r) => toRow(dimension, r.value, r.visitors))}
+          rows={data.data.rows.map((r) => toRow(dimension, r))}
+          formatRevenue={revenueFormat(data.data)}
           onSelect={(row) => onFilter(dimension, row.key)}
         />
       )}

@@ -5,7 +5,7 @@ import { api, type Filters, type Finding, type ReadingResult, type Scope } from 
 import { cx } from '../ui/cx'
 import { Delta } from '../ui/Delta'
 import { FILTER_LABELS, filterValueLabel, MONO_FILTERS } from './filters'
-import { compact, duration, percent } from './format'
+import { compact, duration, money, percent } from './format'
 
 const TOTAL_LABELS = {
   visitors: 'Visitors',
@@ -13,22 +13,39 @@ const TOTAL_LABELS = {
   bounce_rate: 'Bounce rate',
   avg_session_seconds: 'Session time',
   conversion_rate: 'Conversion',
+  revenue: 'Revenue',
 } as const
 
 const day = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 const time = new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' })
 
-function valueOf(f: Finding) {
-  if (f.metric === 'conversion_rate') return percent(f.current, 1)
-  if (f.metric === 'bounce_rate') return percent(f.current)
-  if (f.metric === 'avg_session_seconds') return duration(f.current)
-  return compact(f.current)
+/** A value of the finding's metric, formatted like the rest of the dashboard. */
+function formatted(f: Finding, x: number) {
+  if (f.metric === 'conversion_rate') return percent(x, 1)
+  if (f.metric === 'bounce_rate') return percent(x)
+  if (f.metric === 'avg_session_seconds') return duration(x)
+  if (f.metric === 'revenue') return money(x, f.currency ?? 'USD', { compact: true })
+  return compact(x)
 }
 
 /** What a finding is about, in the same words and type as the filter chips. */
 function Subject({ finding: f }: { finding: Finding }) {
   const s = f.subject
   if (s.kind === 'total') return <span>{TOTAL_LABELS[f.metric]}</span>
+  if (s.kind === 'segment_goal')
+    return (
+      <span
+        className="min-w-0 truncate"
+        title={`${FILTER_LABELS[s.dimension]} ${filterValueLabel(s.dimension, s.value)} → ${s.name}`}
+      >
+        <span className="text-muted">{FILTER_LABELS[s.dimension]} </span>
+        <span className={cx(MONO_FILTERS.has(s.dimension) && 'font-mono text-path')}>
+          {filterValueLabel(s.dimension, s.value)}
+        </span>
+        <span className="text-muted"> → </span>
+        <span className="font-mono text-path">{s.name}</span>
+      </span>
+    )
   const [label, value, mono] =
     s.kind === 'goal'
       ? ['Goal', s.name, true]
@@ -41,6 +58,7 @@ function Subject({ finding: f }: { finding: Finding }) {
     <span className="min-w-0 truncate">
       <span className="text-muted">{label} </span>
       <span className={cx(mono && 'font-mono text-path')}>{value}</span>
+      {f.metric === 'revenue' && <span className="text-muted"> revenue</span>}
     </span>
   )
 }
@@ -83,7 +101,7 @@ export function ReadingPanel({
   const data = query.data
   return (
     <aside
-      className="grid min-w-0 content-start gap-4 rounded-md border border-line bg-surface p-4"
+      className="grid min-w-0 content-start gap-4 rounded-md border border-line bg-surface p-4 lg:absolute lg:inset-0 lg:overflow-y-auto"
       aria-busy={query.isFetching || refreshing}
     >
       <header className="flex min-h-7 items-center justify-between gap-3">
@@ -193,13 +211,18 @@ function Body({ data, onShow }: { data: ReadingResult; onShow: (filters: Filters
                 >
                   <span className="flex min-w-0 flex-col">
                     <Subject finding={f} />
+                    {f.baseline !== undefined && (
+                      <span className="text-label text-muted">
+                        vs {formatted(f, f.baseline)} for all visitors
+                      </span>
+                    )}
                     {f.since && (
                       <span className="text-label text-muted">
                         since {day.format(new Date(f.since))}
                       </span>
                     )}
                   </span>
-                  <span className="font-medium">{valueOf(f)}</span>
+                  <span className="font-medium">{formatted(f, f.current)}</span>
                   <span className="text-right">
                     <Change finding={f} />
                   </span>

@@ -1,6 +1,16 @@
 import type { SiteSemantics } from '@recount/semantic'
 import { SESSION_DIMENSIONS } from '../stats/filters'
-import { goalsOf, rows, type Scope, sessions, type Totals, totalsOf } from '../stats/queries'
+import {
+  type GoalRow,
+  goalsOf,
+  type Revenue,
+  revenueOf,
+  rows,
+  type Scope,
+  sessions,
+  type Totals,
+  totalsOf,
+} from '../stats/queries'
 import { type DateRange, previousRange } from '../stats/range'
 import {
   changePoint,
@@ -8,7 +18,9 @@ import {
   type Metric,
   type Mover,
   movers,
+  pickConversions,
   relChange,
+  type SegmentConversion,
   topMovers,
   type ValueRow,
 } from './changes'
@@ -18,6 +30,10 @@ const TOTAL_THRESHOLD = 0.1
 /** Goal conversion rates are reported when they moved this much, or always for key events. */
 const GOAL_THRESHOLD = 0.15
 const GOAL_MIN_VISITORS = 10
+/** When a goal's rate moved, this many of the biggest moving segments get their own rate. */
+const EXPLAINING_SEGMENTS = 2
+/** A moving segment's revenue is reported when it holds this share of either period's revenue. */
+const SEGMENT_REVENUE_SHARE = 0.05
 
 function valuesOf(scope: Scope, range: DateRange, dimension: string) {
   const s = sessions(scope, range)
@@ -58,13 +74,16 @@ export async function detectChanges(scope: Scope, semantics?: SiteSemantics): Pr
   const before = previousRange(scope.range)
   const dimensions = SESSION_DIMENSIONS.filter((d) => !scope.filters[d])
 
-  const [totals, previous, goalsNow, goalsBefore, ...byDimension] = await Promise.all([
-    totalsOf(scope, scope.range),
-    totalsOf(scope, before),
-    goalsOf(scope, scope.range),
-    goalsOf(scope, before),
-    ...dimensions.flatMap((d) => [valuesOf(scope, scope.range, d), valuesOf(scope, before, d)]),
-  ])
+  const [totals, previous, revenue, prevRevenue, goalsNow, goalsBefore, ...byDimension] =
+    await Promise.all([
+      totalsOf(scope, scope.range),
+      totalsOf(scope, before),
+      revenueOf(scope, scope.range),
+      revenueOf(scope, before),
+      goalsOf(scope, scope.range),
+      goalsOf(scope, before),
+      ...dimensions.flatMap((d) => [valuesOf(scope, scope.range, d), valuesOf(scope, before, d)]),
+    ])
 
   const findings: Omit<Finding, 'id'>[] = []
   const totalChange = relChange(totals.visitors, previous.visitors)
@@ -83,6 +102,18 @@ export async function detectChanges(scope: Scope, semantics?: SiteSemantics): Pr
     if (change === null || Math.abs(change) < TOTAL_THRESHOLD) continue
     findings.push(total(scope, metric, totals, previous))
   }
+  const currency = scope.site.currency
+  // Revenue is always worth a line once the site has any.
+  if (revenue.revenue || prevRevenue.revenue)
+    findings.push({
+      subject: { kind: 'total' },
+      metric: 'revenue',
+      current: revenue.revenue,
+      previous: prevRevenue.revenue,
+      change: relChange(revenue.revenue, prevRevenue.revenue),
+      currency,
+      filters: scope.filters,
+    })
 
   // Segments: values that moved, then their own step day.
   const minVisitors = Math.max(10, Math.round(0.02 * Math.max(totals.visitors, previous.visitors)))
@@ -94,8 +125,9 @@ export async function detectChanges(scope: Scope, semantics?: SiteSemantics): Pr
     }),
   )
   const totalDiff = totals.visitors - previous.visitors
+  const top = topMovers(candidates)
   const segments = await Promise.all(
-    topMovers(candidates).map(async (m): Promise<Omit<Finding, 'id'>> => {
+    top.map(async (m): Promise<Omit<Finding, 'id'>> => {
       const filters = { ...scope.filters, [m.dimension]: m.value }
       const change = relChange(m.current, m.previous)
       const diff = m.current - m.previous
@@ -115,11 +147,14 @@ export async function detectChanges(scope: Scope, semantics?: SiteSemantics): Pr
     }),
   )
   findings.push(...segments)
+  if (revenue.revenue || prevRevenue.revenue)
+    findings.push(...(await segmentRevenue(scope, before, top, revenue, prevRevenue)))
 
   // Goals: conversion rate among the scope's visitors.
   const keyEvents = new Set(semantics?.events.filter((e) => e.key).map((e) => e.name))
   const now = new Map(goalsNow.map((g) => [g.name, g.visitors]))
   const earlier = new Map(goalsBefore.map((g) => [g.name, g.visitors]))
+  const reported: { name: string; moved: boolean }[] = []
   // Goals that stopped firing matter as much as new ones.
   for (const name of new Set([...now.keys(), ...earlier.keys()])) {
     const visitors = now.get(name) ?? 0
@@ -131,6 +166,7 @@ export async function detectChanges(scope: Scope, semantics?: SiteSemantics): Pr
       Math.max(visitors, prevVisitors) >= GOAL_MIN_VISITORS &&
       (change === null || Math.abs(change) >= GOAL_THRESHOLD)
     if (!moved && !keyEvents.has(name)) continue
+    reported.push({ name, moved })
     findings.push({
       subject: { kind: 'goal', name },
       metric: 'conversion_rate',
@@ -141,8 +177,100 @@ export async function detectChanges(scope: Scope, semantics?: SiteSemantics): Pr
     })
   }
 
+  findings.push(...(await segmentConversions(scope, before, top, reported, totals.visitors, now)))
+
   return findings.map((f, i) => ({ id: `f${i + 1}`, ...f }))
 }
+
+/**
+ * How the moving segments convert on the reported goals: the evidence for or against "the new
+ * traffic converts worse". Kept when a segment's rate differs clearly from all visitors, or when
+ * the goal moved and the segment is one of the biggest movers, since a matching rate then shows
+ * the shift is site-wide rather than a change in the mix.
+ */
+async function segmentConversions(
+  scope: Scope,
+  before: DateRange,
+  segments: Mover[],
+  goals: { name: string; moved: boolean }[],
+  visitors: number,
+  converted: Map<string, number>,
+): Promise<Omit<Finding, 'id'>[]> {
+  if (!goals.length || !visitors) return []
+  const perSegment = await Promise.all(
+    segments.map(async (m) => {
+      const filters = { ...scope.filters, [m.dimension]: m.value }
+      const [now, earlier] = await Promise.all([
+        goalsOf({ ...scope, filters }, scope.range),
+        goalsOf({ ...scope, filters }, before),
+      ])
+      return { m, filters, now: byName(now), earlier: byName(earlier) }
+    }),
+  )
+  const candidates: SegmentConversion[] = perSegment.flatMap(({ m, now }, rank) =>
+    goals.map((goal) => ({
+      dimension: m.dimension,
+      value: m.value,
+      goal: goal.name,
+      visitors: m.current,
+      converted: now.get(goal.name) ?? 0,
+      baseline: (converted.get(goal.name) ?? 0) / visitors,
+      explains: goal.moved && rank < EXPLAINING_SEGMENTS,
+    })),
+  )
+  return pickConversions(candidates).map((c) => {
+    const segment = perSegment.find((p) => p.m.dimension === c.dimension && p.m.value === c.value)
+    const { m, filters, earlier } = segment as (typeof perSegment)[number]
+    const rate = c.converted / c.visitors
+    const prevRate = m.previous ? (earlier.get(c.goal) ?? 0) / m.previous : 0
+    return {
+      subject: { kind: 'segment_goal', dimension: c.dimension, value: c.value, name: c.goal },
+      metric: 'conversion_rate',
+      current: rate,
+      previous: prevRate,
+      change: relChange(rate, prevRate),
+      baseline: c.baseline,
+      // The segment alone: the goals panel then shows its conversion rates.
+      filters,
+    }
+  })
+}
+
+/** Revenue from the biggest moving segments, when they bring a noticeable part of it. */
+async function segmentRevenue(
+  scope: Scope,
+  before: DateRange,
+  segments: Mover[],
+  now: Revenue,
+  earlier: Revenue,
+): Promise<Omit<Finding, 'id'>[]> {
+  const found = await Promise.all(
+    segments.map(async (m) => {
+      const filters = { ...scope.filters, [m.dimension]: m.value }
+      const [cur, prev] = await Promise.all([
+        revenueOf({ ...scope, filters }, scope.range),
+        revenueOf({ ...scope, filters }, before),
+      ])
+      const share = Math.max(
+        now.revenue ? cur.revenue / now.revenue : 0,
+        earlier.revenue ? prev.revenue / earlier.revenue : 0,
+      )
+      if (share < SEGMENT_REVENUE_SHARE) return undefined
+      return {
+        subject: { kind: 'segment', dimension: m.dimension, value: m.value },
+        metric: 'revenue',
+        current: cur.revenue,
+        previous: prev.revenue,
+        change: relChange(cur.revenue, prev.revenue),
+        currency: scope.site.currency,
+        filters,
+      } satisfies Omit<Finding, 'id'>
+    }),
+  )
+  return found.filter((f) => f !== undefined)
+}
+
+const byName = (goals: GoalRow[]) => new Map(goals.map((g) => [g.name, g.visitors]))
 
 function total(scope: Scope, metric: Metric & keyof Totals, now: Totals, before: Totals) {
   return {

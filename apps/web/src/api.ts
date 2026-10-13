@@ -3,6 +3,7 @@ export interface Site {
   domain: string
   name: string
   timezone: string
+  currency: string
 }
 
 export interface DateRange {
@@ -16,13 +17,18 @@ export interface Totals {
   pageviews: number
   bounce_rate: number
   avg_session_seconds: number
+  /** Minor units of the site's currency, net of refunds. */
+  revenue: number
+  payments: number
+  customers: number
 }
 
 export interface MainStats {
+  currency: string
   totals: Totals
   /** The same-length period just before the range. */
   previous: Totals
-  series: Array<{ day: string; visitors: number; pageviews: number }>
+  series: Array<{ day: string; visitors: number; pageviews: number; revenue: number }>
 }
 
 export type Dimension =
@@ -38,7 +44,9 @@ export type Dimension =
 
 export interface Breakdown {
   dimension: Dimension
-  rows: Array<{ value: string; visitors: number }>
+  currency: string
+  /** Revenue is absent for pages, which share their sessions' payments. */
+  rows: Array<{ value: string; visitors: number; revenue?: number }>
 }
 
 export interface Goals {
@@ -51,6 +59,7 @@ export type Metric =
   | 'bounce_rate'
   | 'avg_session_seconds'
   | 'conversion_rate'
+  | 'revenue'
 
 /** One detected change. Numbers come from the database; the reading only cites them. */
 export interface Finding {
@@ -59,11 +68,21 @@ export interface Finding {
     | { kind: 'total' }
     | { kind: 'segment'; dimension: Exclude<Dimension, 'page'>; value: string }
     | { kind: 'goal'; name: string }
+    | {
+        kind: 'segment_goal'
+        dimension: Exclude<Dimension, 'page'>
+        value: string
+        name: string
+      }
   metric: Metric
   current: number
   previous: number
   change: number | null
   share?: number
+  /** For a segment's conversion rate: the rate among all visitors in scope. */
+  baseline?: number
+  /** For revenue: the currency `current` and `previous` are minor units of. */
+  currency?: string
   since?: string
   filters: Filters
 }

@@ -13,24 +13,14 @@ export interface BreakdownRow {
 export interface BreakdownListProps {
   dimension: string
   rows: BreakdownRow[]
-  showRevenue?: boolean
+  /** Formats a row's revenue; the revenue column shows only when this is set. */
+  formatRevenue?: (revenue: number) => string
   /** Makes each row a filter: called with the row clicked. */
   onSelect?: (row: BreakdownRow) => void
 }
 
-const money = new Intl.NumberFormat('en', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-})
-
 /** Ranked rows with a fill showing each row's share of the top row, datafa.st style. */
-export function BreakdownList({
-  dimension,
-  rows,
-  showRevenue = false,
-  onSelect,
-}: BreakdownListProps) {
+export function BreakdownList({ dimension, rows, formatRevenue, onSelect }: BreakdownListProps) {
   const max = Math.max(1, ...rows.map((r) => r.visitors))
   return (
     <table className="w-full table-fixed border-separate border-spacing-y-0.5 tabular-nums">
@@ -42,7 +32,7 @@ export function BreakdownList({
           <th scope="col" className="w-20 px-2 pb-1 text-right font-medium">
             Visitors
           </th>
-          {showRevenue && (
+          {formatRevenue && (
             <th scope="col" className="w-20 px-2 pb-1 text-right font-medium">
               Revenue
             </th>
@@ -78,9 +68,9 @@ export function BreakdownList({
             <td className="px-2 py-1.5 text-right font-medium group-hover:bg-sunken">
               {r.visitors.toLocaleString('en')}
             </td>
-            {showRevenue && (
+            {formatRevenue && (
               <td className="px-2 py-1.5 text-right font-medium group-hover:bg-sunken">
-                {r.revenue ? money.format(r.revenue) : '—'}
+                {r.revenue ? formatRevenue(r.revenue) : '—'}
               </td>
             )}
           </tr>

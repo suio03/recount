@@ -4,11 +4,14 @@ import { api, type MainStats, type Scope } from '../api'
 import { change } from '../ui/Delta'
 import { KpiTile } from '../ui/KpiTile'
 import { TrendChart } from '../ui/TrendChart'
-import { compact, duration, percent } from './format'
+import { compact, duration, money, percent } from './format'
 
 type Series = 'visitors' | 'pageviews'
 
-/** KPI strip plus the daily chart. Visitors and Pageviews tiles pick the charted series. */
+/**
+ * KPI strip plus the daily chart. Visitors and Pageviews tiles pick the charted series; revenue
+ * is drawn as bars under it whenever the site has any.
+ */
 export function Overview({ scope }: { scope: Scope }) {
   const [series, setSeries] = useState<Series>('visitors')
   const main = useQuery({
@@ -39,7 +42,9 @@ function Body({
   series: Series
   onSeries: (s: Series) => void
 }) {
-  const { totals: t, previous: p } = stats
+  const { totals: t, previous: p, currency } = stats
+  const hasRevenue = t.revenue !== 0 || p.revenue !== 0
+  const formatRevenue = (minor: number) => money(minor, currency)
   return (
     <>
       <div className="flex flex-wrap border-b border-line">
@@ -47,13 +52,23 @@ function Body({
           label="Visitors"
           value={compact(t.visitors)}
           delta={change(t.visitors, p.visitors)}
+          swatch="visitors"
           selected={series === 'visitors'}
           onSelect={() => onSeries('visitors')}
         />
+        {hasRevenue && (
+          <KpiTile
+            label="Revenue"
+            value={money(t.revenue, currency, { compact: true })}
+            delta={change(t.revenue, p.revenue)}
+            swatch="revenue"
+          />
+        )}
         <KpiTile
           label="Pageviews"
           value={compact(t.pageviews)}
           delta={change(t.pageviews, p.pageviews)}
+          swatch="visitors"
           selected={series === 'pageviews'}
           onSelect={() => onSeries('pageviews')}
         />
@@ -72,7 +87,12 @@ function Body({
       <div className="px-4 pt-4 pb-2">
         <TrendChart
           metric={series === 'visitors' ? 'Visitors' : 'Pageviews'}
-          data={stats.series.map((d) => ({ day: d.day, value: d[series] }))}
+          data={stats.series.map((d) => ({
+            day: d.day,
+            value: d[series],
+            revenue: hasRevenue ? d.revenue : undefined,
+          }))}
+          formatRevenue={hasRevenue ? formatRevenue : undefined}
         />
       </div>
     </>

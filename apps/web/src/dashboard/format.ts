@@ -8,6 +8,21 @@ export const percent = (fraction: number, digits = 0) => `${(fraction * 100).toF
 export const duration = (s: number) =>
   s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`
 
+/** Revenue from minor units: "$4,059" in rows, "$4.1k" when `compact`. */
+export function money(minor: number, currency: string, { compact = false } = {}) {
+  const digits =
+    new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
+      .maximumFractionDigits ?? 2
+  const format = new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency,
+    notation: compact ? 'compact' : 'standard',
+    maximumFractionDigits: compact ? 1 : 0,
+  })
+  const text = format.format(minor / 10 ** digits)
+  return compact ? text.replace(/K$/, 'k') : text
+}
+
 const regions = new Intl.DisplayNames(['en'], { type: 'region' })
 
 export const countryName = (code: string) => {

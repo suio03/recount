@@ -24,6 +24,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   bounce_rate: 'bounce rate',
   avg_session_seconds: 'average session time',
   conversion_rate: 'conversion rate (share of visitors who triggered it)',
+  revenue: 'revenue (net of refunds)',
 }
 
 export function count(n: number): string {
@@ -53,7 +54,21 @@ export function shortDay(day: string): string {
   })
 }
 
-export function value(metric: Metric, x: number): string {
+/** Whole units from 100 up, so "$4,059" rather than "$4,059.00", which the model would shorten. */
+export function money(minor: number, currency: string): string {
+  const digits =
+    new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
+      .maximumFractionDigits ?? 2
+  const major = minor / 10 ** digits
+  return new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: Math.abs(major) >= 100 ? 0 : digits,
+  }).format(major)
+}
+
+export function value(metric: Metric, x: number, currency = 'USD'): string {
+  if (metric === 'revenue') return money(x, currency)
   if (metric === 'bounce_rate') return percent(x)
   if (metric === 'conversion_rate') return percent(x, 1)
   if (metric === 'avg_session_seconds') return seconds(x)
@@ -64,6 +79,8 @@ export function subjectLabel(f: Finding): string {
   const s = f.subject
   if (s.kind === 'total') return 'All traffic in scope'
   if (s.kind === 'goal') return `Goal "${s.name}"`
+  if (s.kind === 'segment_goal')
+    return `Goal "${s.name}" among visitors with ${DIMENSION_LABELS[s.dimension]} = ${s.value}`
   return `${DIMENSION_LABELS[s.dimension]} = ${s.value}`
 }
 
@@ -71,8 +88,10 @@ export function subjectLabel(f: Finding): string {
 export function describe(f: Finding): string {
   const lines = [
     `[${f.id}] ${subjectLabel(f)}: ${METRIC_LABELS[f.metric]}`,
-    `  now ${value(f.metric, f.current)}, before ${value(f.metric, f.previous)}, change ${signed(f.change)}`,
+    `  now ${value(f.metric, f.current, f.currency)}, before ${value(f.metric, f.previous, f.currency)}, change ${signed(f.change)}`,
   ]
+  if (f.baseline !== undefined)
+    lines.push(`  among all visitors in scope it is ${value(f.metric, f.baseline)}`)
   if (f.share !== undefined)
     lines.push(`  accounts for ${percent(f.share)} of the total visitor change`)
   if (f.since) lines.push(`  the shift starts on ${shortDay(f.since)}`)

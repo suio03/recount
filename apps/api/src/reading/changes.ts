@@ -13,11 +13,15 @@ export type Metric =
   | 'bounce_rate'
   | 'avg_session_seconds'
   | 'conversion_rate'
+  /** Net revenue in minor units of `Finding.currency`. */
+  | 'revenue'
 
 export type Subject =
   | { kind: 'total' }
   | { kind: 'segment'; dimension: SessionDimension; value: string }
   | { kind: 'goal'; name: string }
+  /** A goal's conversion rate among one segment's visitors. */
+  | { kind: 'segment_goal'; dimension: SessionDimension; value: string; name: string }
 
 export interface Finding {
   /** Stable within one reading, cited by the model as evidence. */
@@ -30,6 +34,10 @@ export interface Finding {
   change: number | null
   /** Share of the total visitor change this segment accounts for, when they move together. */
   share?: number
+  /** For a segment's conversion rate: the rate among all visitors in scope, for comparison. */
+  baseline?: number
+  /** For revenue: the site's currency, which `current` and `previous` are minor units of. */
+  currency?: string
   /** First day of a sustained shift inside the range, when one stands out. */
   since?: string
   /** Filters that show this finding on the dashboard. */
@@ -129,4 +137,46 @@ export function changePoint(
   const after = mean(values.slice(best.at))
   const ratio = Math.max(before, after) / Math.max(Math.min(before, after), 1e-9)
   return ratio >= minRatio ? best.at : undefined
+}
+
+export interface SegmentConversion {
+  dimension: SessionDimension
+  value: string
+  goal: string
+  /** Segment visitors and how many of them triggered the goal. */
+  visitors: number
+  converted: number
+  /** The goal's rate among all visitors in scope. */
+  baseline: number
+  /**
+   * The goal's rate moved and this is one of the biggest moving segments: its rate is worth
+   * reporting even when it matches everyone else's, because that rules out the segment as the
+   * cause.
+   */
+  explains: boolean
+}
+
+/**
+ * The segment conversion rates worth reporting: those that explain a moved goal, then those
+ * that differ from all visitors by at least `minGap` (relative), largest gap in conversions
+ * first. A segment needs enough visitors to expect `minExpected` conversions at the baseline
+ * rate, so a handful of visitors cannot look like a gap.
+ */
+export function pickConversions(
+  all: SegmentConversion[],
+  { minGap = 0.25, minExpected = 5, limit = 4 } = {},
+): SegmentConversion[] {
+  const missing = (c: SegmentConversion) => Math.abs(c.converted - c.visitors * c.baseline)
+  return all
+    .filter((c) => {
+      if (c.baseline === 0 || c.visitors * c.baseline < minExpected) return false
+      return c.explains || Math.abs(c.converted / c.visitors / c.baseline - 1) >= minGap
+    })
+    .sort(
+      (a, b) =>
+        Number(b.explains) - Number(a.explains) ||
+        missing(b) - missing(a) ||
+        a.value.localeCompare(b.value),
+    )
+    .slice(0, limit)
 }

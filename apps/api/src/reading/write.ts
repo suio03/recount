@@ -7,7 +7,7 @@ import type { Finding } from './changes'
 import { describe, shortDay, unsupportedNumbers } from './format'
 
 /** Bump when the prompt or output shape changes, so cached readings are rewritten. */
-export const PROMPT_VERSION = 1
+export const PROMPT_VERSION = 4
 
 /** The API refused the key (invalid, expired or revoked) or the account cannot pay for calls. */
 export class KeyProblem extends Error {
@@ -47,6 +47,8 @@ Rules:
 - Use only the findings you are given. Never compute, estimate or round a number yourself; copy figures exactly as written in the findings you cite.
 - Each claim cites the ids of the findings it rests on. A claim that combines findings cites all of them.
 - Lead with the change that matters most to the business, as described in the site context. Say plainly when a change is small, or when a segment moved but the total did not.
+- Say a segment converts better or worse than other visitors only when a finding compares its conversion rate with all visitors. If a growing segment converts about as well as all visitors, a fall in the overall rate is not dilution by that segment: say the rate fell within the segment too, using its own before and now figures.
+- Revenue findings are net of refunds. When revenue moved, say which segments' revenue moved with it, and whether visitors moved the same way; a segment that brought more visitors but not more revenue is worth saying so.
 - Explanations of why are hypotheses: phrase them as "likely" or "suggests", and only when the findings support them (for example a single channel accounting for most of the change, or a shift starting on a specific day).
 - 2 to 5 claims, each one or two sentences. Plain, specific English. No preamble, no advice section, no markdown.
 - The headline is one sentence that a reader could stop at.`

@@ -13,11 +13,11 @@ export interface Scope {
 export const inRange = `site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}`
 
 /**
- * One row per session. Acquisition and environment come from the session's first event; entry
- * is its first pageview. A bounce is a session with one pageview and no other events.
+ * Per-session columns, aggregated over a session's events. Acquisition and environment come from
+ * the session's first event; entry is its first pageview. A bounce is a session with one
+ * pageview and no other events.
  */
-const SESSIONS = `
-  SELECT
+export const SESSION_COLUMNS = `
     session_id,
     any(visitor_id) AS visitor_id,
     toDate(min(timestamp), {tz:String}) AS day,
@@ -33,7 +33,11 @@ const SESSIONS = `
     argMin(browser, timestamp) AS browser,
     argMin(os, timestamp) AS os,
     groupUniqArrayIf(pathname, name = 'pageview') AS pages,
-    groupUniqArray(name) AS event_names
+    groupUniqArray(name) AS event_names`
+
+/** One row per session, from its events in range. */
+const SESSIONS = `
+  SELECT ${SESSION_COLUMNS}
   FROM events
   WHERE ${inRange}
   GROUP BY session_id`
@@ -90,4 +94,37 @@ export function goalsOf(scope: Scope, range: DateRange) {
      GROUP BY name ORDER BY visitors DESC, name`,
     s.params,
   )
+}
+
+/**
+ * Payments in scope: dated by when they were paid, filtered through the snapshot of the session
+ * each one is attributed to. Unattributed payments count only when no filter is active.
+ */
+export function payments(scope: Scope, range = scope.range) {
+  const filter = filterSql(scope.filters)
+  return {
+    sql: `SELECT * FROM payments FINAL
+          WHERE site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}
+            AND ${filter.where}`,
+    params: { site: scope.site.id, tz: scope.site.timezone, ...range, ...filter.params },
+  }
+}
+
+export interface Revenue {
+  /** Minor units of the site's currency, net of refunds. */
+  revenue: number
+  /** Payments and renewals, not refunds. */
+  payments: number
+  /** Customers who paid for the first time. */
+  customers: number
+}
+
+export function revenueOf(scope: Scope, range: DateRange) {
+  const p = payments(scope, range)
+  return rows<Revenue>(
+    `SELECT sum(amount) AS revenue, countIf(kind != 'refund') AS payments,
+            uniqExactIf(customer_id, kind = 'new') AS customers
+     FROM (${p.sql})`,
+    p.params,
+  ).then((r) => r[0] as Revenue)
 }

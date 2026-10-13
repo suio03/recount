@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "migrate": "tsx --env-file-if-exists=../../.env src/migrate.ts",
     "typecheck": "tsc -p .",
-    "seed": "tsx --env-file-if-exists=../../.env src/seed.ts"
+    "seed": "tsx --env-file-if-exists=../../.env src/seed.ts",
+    "revenue": "tsx --env-file-if-exists=../../.env src/revenue/cli.ts"
   },
   "dependencies": {
     "@clickhouse/client": "^1.24.1",

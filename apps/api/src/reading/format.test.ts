@@ -38,6 +38,29 @@ describe('describe', () => {
   })
 })
 
+describe('describe a segment conversion', () => {
+  it('gives the rate for all visitors to compare against', () => {
+    const text = describeFinding({
+      id: 'f7',
+      subject: {
+        kind: 'segment_goal',
+        dimension: 'referrer',
+        value: 'chatgpt.com',
+        name: 'Signup',
+      },
+      metric: 'conversion_rate',
+      current: 0.005,
+      previous: 0.006,
+      change: -0.17,
+      baseline: 0.009,
+      filters: { referrer: 'chatgpt.com' },
+    })
+    expect(text).toContain('Goal "Signup" among visitors with Referrer = chatgpt.com')
+    expect(text).toContain('now 0.5%, before 0.6%')
+    expect(text).toContain('among all visitors in scope it is 0.9%')
+  })
+})
+
 describe('unsupportedNumbers', () => {
   const evidence = ['now 3.1k, before 1.8k, change +78%', 'the shift starts on Oct 4']
 

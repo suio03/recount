@@ -3,7 +3,16 @@ import { z } from 'zod'
 import { db } from '../db/postgres'
 import { readingFor } from '../reading'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
-import { goalsOf, inRange, rows, type Scope, sessions, totalsOf } from '../stats/queries'
+import {
+  goalsOf,
+  inRange,
+  payments,
+  revenueOf,
+  rows,
+  type Scope,
+  sessions,
+  totalsOf,
+} from '../stats/queries'
 import { previousRange, RangeQuery } from '../stats/range'
 
 /** Mounted under /api/sites/:id/stats behind the admin bearer token. */
@@ -20,20 +29,38 @@ statsRoutes.use('*', async (c, next) => {
   await next()
 })
 
-/** Headline numbers for the range and the period before it, plus a daily series. */
+/**
+ * Headline numbers for the range and the period before it, plus a daily series. Revenue is in
+ * minor units of `currency`.
+ */
 statsRoutes.get('/main', async (c) => {
   const scope = c.get('scope')
+  const before = previousRange(scope.range)
   const s = sessions(scope)
-  const [totals, previous, series] = await Promise.all([
+  const p = payments(scope)
+  const [totals, previous, revenue, previousRevenue, series, daily] = await Promise.all([
     totalsOf(scope, scope.range),
-    totalsOf(scope, previousRange(scope.range)),
-    rows(
+    totalsOf(scope, before),
+    revenueOf(scope, scope.range),
+    revenueOf(scope, before),
+    rows<{ day: string; visitors: number; pageviews: number }>(
       `SELECT day, uniqExact(visitor_id) AS visitors, sum(session_pageviews) AS pageviews
        FROM (${s.sql}) GROUP BY day ORDER BY day WITH FILL FROM {from:Date} TO {to:Date} + 1`,
       s.params,
     ),
+    rows<{ day: string; revenue: number }>(
+      `SELECT toDate(timestamp, {tz:String}) AS day, sum(amount) AS revenue
+       FROM (${p.sql}) GROUP BY day`,
+      p.params,
+    ),
   ])
-  return c.json({ totals, previous, series })
+  const revenueByDay = new Map(daily.map((d) => [d.day, d.revenue]))
+  return c.json({
+    currency: scope.site.currency,
+    totals: { ...totals, ...revenue },
+    previous: { ...previous, ...previousRevenue },
+    series: series.map((d) => ({ ...d, revenue: revenueByDay.get(d.day) ?? 0 })),
+  })
 })
 
 const BreakdownQuery = z.object({
@@ -43,7 +70,8 @@ const BreakdownQuery = z.object({
 
 /**
  * Top values of one dimension, ranked by unique visitors. Empty values are left out. Pages are
- * counted from the pageviews of the sessions in scope.
+ * counted from the pageviews of the sessions in scope. Session dimensions also carry the
+ * revenue attributed to each value; pages do not, since one payment's session views many.
  */
 statsRoutes.get('/breakdown', async (c) => {
   const q = BreakdownQuery.safeParse(c.req.query())
@@ -59,7 +87,21 @@ statsRoutes.get('/breakdown', async (c) => {
       : `SELECT ${dimension} AS value, uniqExact(visitor_id) AS visitors, count() AS sessions
          FROM (${s.sql}) WHERE value != ''
          GROUP BY value ORDER BY visitors DESC, value LIMIT {limit:UInt32}`
-  return c.json({ dimension, rows: await rows(query, { ...s.params, limit }) })
+  const found = await rows<{ value: string; visitors: number }>(query, { ...s.params, limit })
+  const scope = c.get('scope')
+  if (dimension === 'page') return c.json({ dimension, currency: scope.site.currency, rows: found })
+  const p = payments(scope)
+  const revenue = await rows<{ value: string; revenue: number }>(
+    `SELECT ${dimension} AS value, sum(amount) AS revenue
+     FROM (${p.sql}) WHERE value IN {values:Array(String)} GROUP BY value`,
+    { ...p.params, values: found.map((r) => r.value) },
+  )
+  const byValue = new Map(revenue.map((r) => [r.value, r.revenue]))
+  return c.json({
+    dimension,
+    currency: scope.site.currency,
+    rows: found.map((r) => ({ ...r, revenue: byValue.get(r.value) ?? 0 })),
+  })
 })
 
 /** Custom events with the visitors who triggered them, for this range and the one before. */
