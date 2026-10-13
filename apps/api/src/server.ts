@@ -3,6 +3,7 @@ import { app } from './app'
 import { env } from './env'
 import { pruneSalts } from './ingest/identity'
 import { extractEnded } from './replay/sessions'
+import { summarizeAll } from './replay/summarize'
 import { syncAll } from './revenue/sync'
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
@@ -19,6 +20,11 @@ setTimeout(syncRevenue, 10_000).unref()
 setInterval(syncRevenue, 15 * 60_000).unref()
 
 // Recordings become timelines once their session has ended.
-const extractReplays = () => extractEnded().catch((e) => console.error('replay extract', e))
+// Timelines first, then summaries of the notable ones.
+const extractReplays = () =>
+  extractEnded()
+    .catch((e) => console.error('replay extract', e))
+    .then(() => summarizeAll())
+    .catch((e) => console.error('replay summarize', e))
 setTimeout(extractReplays, 20_000).unref()
 setInterval(extractReplays, 5 * 60_000).unref()

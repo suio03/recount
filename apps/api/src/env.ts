@@ -12,6 +12,10 @@ const Env = z.object({
   /** Enables the AI reading. Without it the dashboard still shows the detected changes. */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   READING_MODEL: z.string().default('claude-sonnet-5-5'),
+  /** Writes one summary per notable recorded session, so a smaller model keeps the cost down. */
+  REPLAY_MODEL: z.string().default('claude-haiku-5-5'),
+  /** At most this many session summaries per site per day; the most notable sessions go first. */
+  REPLAY_SUMMARIES_PER_DAY: z.coerce.number().int().min(0).default(50),
   /** Directory holding the built tracker, served at /js/script.js. */
   TRACKER_DIST: z
     .string()

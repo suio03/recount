@@ -1,5 +1,6 @@
 import type { SiteSemantics } from '@recount/semantic'
 import { z } from 'zod'
+import { structured } from '../ai/claude'
 import { env } from '../env'
 import type { DateRange } from '../stats/range'
 import { days } from '../stats/range'
@@ -8,16 +9,6 @@ import { describe, shortDay, unsupportedNumbers } from './format'
 
 /** Bump when the prompt or output shape changes, so cached readings are rewritten. */
 export const PROMPT_VERSION = 4
-
-/** The API refused the key (invalid, expired or revoked) or the account cannot pay for calls. */
-export class KeyProblem extends Error {
-  constructor(
-    readonly kind: 'key_rejected' | 'no_credit',
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 export interface Claim {
   text: string
@@ -38,8 +29,6 @@ const Output = z.object({
   claims: z.array(z.object({ text: z.string(), evidence: z.array(z.string()) })),
 })
 const MAX_CLAIMS = 6
-
-const { $schema: _, ...OUTPUT_SCHEMA } = z.toJSONSchema(Output)
 
 const SYSTEM = `You write "the reading" for a web analytics dashboard: a short explanation of what changed and the most likely why, for the site's owner.
 
@@ -88,32 +77,12 @@ export async function writeReading(
   findings: Finding[],
   semantics: SiteSemantics | undefined,
 ): Promise<Reading> {
-  if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is not set')
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: env.READING_MODEL,
-      max_tokens: 2000,
-      system: SYSTEM,
-      messages: [{ role: 'user', content: prompt(domain, range, findings, semantics) }],
-      output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
-    }),
-    signal: AbortSignal.timeout(90_000),
+  const output = await structured({
+    model: env.READING_MODEL,
+    system: SYSTEM,
+    user: prompt(domain, range, findings, semantics),
+    schema: Output,
   })
-  if (!res.ok) {
-    const text = await res.text()
-    const message = `Anthropic API ${res.status}: ${text}`
-    if (res.status === 401 || res.status === 403) throw new KeyProblem('key_rejected', message)
-    if (/credit balance/i.test(text)) throw new KeyProblem('no_credit', message)
-    throw new Error(message)
-  }
-  const body = (await res.json()) as { content: Array<{ type: string; text?: string }> }
-  const output = Output.parse(JSON.parse(body.content.find((b) => b.type === 'text')?.text ?? ''))
 
   const byId = new Map(findings.map((f) => [f.id, f]))
   const rangeText = `${days(range)} days ${shortDay(range.from)} ${shortDay(range.to)}`
