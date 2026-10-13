@@ -1,8 +1,8 @@
 import * as esbuild from 'esbuild'
 
 const options = {
-  entryPoints: ['src/script.ts'],
-  outfile: 'dist/script.js',
+  entryPoints: ['src/script.ts', 'src/replay.ts'],
+  outdir: 'dist',
   bundle: true,
   minify: true,
   format: 'iife',
@@ -15,6 +15,6 @@ if (process.argv.includes('--watch')) {
   await ctx.watch()
 } else {
   const result = await esbuild.build({ ...options, metafile: true })
-  const bytes = Object.values(result.metafile.outputs)[0].bytes
-  console.log(`dist/script.js ${bytes} bytes`)
+  for (const [file, { bytes }] of Object.entries(result.metafile.outputs))
+    console.log(`${file} ${bytes} bytes`)
 }

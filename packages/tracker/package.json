@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "@recount/shared": "workspace:^",
+    "@rrweb/record": "2.1.6",
     "esbuild": "^0.28.2"
   }
 }

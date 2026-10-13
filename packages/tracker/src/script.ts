@@ -10,6 +10,8 @@ import type { ElementContext, EventPayload, IdentityMode } from '@recount/shared
  *   data-api      Event endpoint. Defaults to `/api/event` on the script's origin.
  *   data-mode     `cookie` (default) keeps a first-party visitor id for journeys and revenue
  *                 attribution; `cookieless` sets nothing and lets the server hash IP + UA daily.
+ *   data-replay   Share of sessions to record for replay, 0 to 1 (default 0). Cookie mode only;
+ *                 the recorder is a separate script loaded just for sampled sessions.
  *
  * Markup hints:
  *   data-rc-event="Name"    Clicking the element sends a custom event with that name.
@@ -216,15 +218,41 @@ declare global {
     recount?: Recount
   }
 }
-window.recount = Object.assign(
+const recount: Recount = Object.assign(
   (name: string, options?: { props?: Props }) => send(name, { props: options?.props }),
   {
     ids() {
       if (mode !== 'cookie') return {}
-      const { vid, sid } = identity()
-      return { recount_vid: vid, recount_sid: sid }
+      // Reading the ids does not extend the session; only tracked events do.
+      const vid = readCookie(VISITOR_COOKIE)
+      const sid = readCookie(SESSION_COOKIE)
+      if (vid && sid) return { recount_vid: vid, recount_sid: sid }
+      const fresh = identity()
+      return { recount_vid: fresh.vid, recount_sid: fresh.sid }
     },
   },
 )
+window.recount = recount
 
 pageview()
+
+// --- Replay ------------------------------------------------------------------------------
+
+/** The same sessions are sampled on every page, so a recording is never missing pages. */
+function sampled(sid: string, rate: number) {
+  let h = 0
+  for (let i = 0; i < sid.length; i++) h = (Math.imul(h, 31) + sid.charCodeAt(i)) >>> 0
+  return (h % 10_000) / 10_000 < rate
+}
+
+const replayRate = Number(script?.dataset.replay ?? 0)
+const sid = mode === 'cookie' && !ignored() ? recount.ids().recount_sid : undefined
+if (sid && replayRate > 0 && sampled(sid, replayRate) && typeof CompressionStream === 'function') {
+  const recorder = document.createElement('script')
+  recorder.src = new URL('/js/replay.js', script?.src || location.href).href
+  recorder.async = true
+  recorder.dataset.site = site
+  if (script?.dataset.api)
+    recorder.dataset.api = new URL('/api/replay', new URL(script.dataset.api, location.href)).href
+  document.head.appendChild(recorder)
+}

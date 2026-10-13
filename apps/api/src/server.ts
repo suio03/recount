@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { app } from './app'
 import { env } from './env'
 import { pruneSalts } from './ingest/identity'
+import { extractEnded } from './replay/sessions'
 import { syncAll } from './revenue/sync'
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
@@ -16,3 +17,8 @@ setInterval(() => pruneSalts().catch((e) => console.error('pruneSalts', e)), 360
 const syncRevenue = () => syncAll().catch((e) => console.error('revenue sync', e))
 setTimeout(syncRevenue, 10_000).unref()
 setInterval(syncRevenue, 15 * 60_000).unref()
+
+// Recordings become timelines once their session has ended.
+const extractReplays = () => extractEnded().catch((e) => console.error('replay extract', e))
+setTimeout(extractReplays, 20_000).unref()
+setInterval(extractReplays, 5 * 60_000).unref()
