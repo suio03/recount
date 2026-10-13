@@ -13,7 +13,9 @@
   "dependencies": {
     "@clickhouse/client": "^1.24.1",
     "@hono/node-server": "^2.1.4",
+    "@recount/semantic": "workspace:^",
     "@recount/shared": "workspace:^",
+    "@recount/sites": "workspace:^",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "isbot": "^5.2.2",

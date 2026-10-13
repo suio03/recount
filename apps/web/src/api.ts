@@ -45,6 +45,41 @@ export interface Goals {
   goals: Array<{ name: string; visitors: number; events: number; previous_visitors: number }>
 }
 
+export type Metric =
+  | 'visitors'
+  | 'pageviews'
+  | 'bounce_rate'
+  | 'avg_session_seconds'
+  | 'conversion_rate'
+
+/** One detected change. Numbers come from the database; the reading only cites them. */
+export interface Finding {
+  id: string
+  subject:
+    | { kind: 'total' }
+    | { kind: 'segment'; dimension: Exclude<Dimension, 'page'>; value: string }
+    | { kind: 'goal'; name: string }
+  metric: Metric
+  current: number
+  previous: number
+  change: number | null
+  share?: number
+  since?: string
+  filters: Filters
+}
+
+export interface ReadingResult {
+  findings: Finding[]
+  reading: {
+    headline: string
+    claims: Array<{ text: string; evidence: string[] }>
+    model: string
+    generatedAt: string
+  } | null
+  status: 'ok' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  error?: string
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
@@ -73,4 +108,6 @@ export const api = {
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),
   goals: (scope: Scope) => get<Goals>(stats(scope, 'goals')),
+  reading: (scope: Scope, refresh = false) =>
+    get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
 }

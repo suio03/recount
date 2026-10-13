@@ -1,0 +1,14 @@
+{
+  "name": "@recount/sites",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@recount/semantic": "workspace:^"
+  }
+}

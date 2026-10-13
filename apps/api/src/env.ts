@@ -9,6 +9,9 @@ const Env = z.object({
   CLICKHOUSE_DATABASE: z.string().default('recount'),
   /** Bearer token for the private API until real auth lands. */
   ADMIN_TOKEN: z.string().min(24),
+  /** Enables the AI reading. Without it the dashboard still shows the detected changes. */
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  READING_MODEL: z.string().default('claude-sonnet-5-5'),
   /** Directory holding the built tracker, served at /js/script.js. */
   TRACKER_DIST: z
     .string()

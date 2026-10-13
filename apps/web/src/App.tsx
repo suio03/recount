@@ -46,6 +46,7 @@ function useUrlState() {
     setFilter: (key: FilterKey, value: string) => setFilters((f) => ({ ...f, [key]: value })),
     removeFilter: (key: FilterKey) => setFilters(({ [key]: _, ...rest }) => rest),
     clearFilters: () => setFilters({}),
+    replaceFilters: setFilters,
   }
 }
 
@@ -88,6 +89,7 @@ export function App() {
           days={Number.parseInt(state.range, 10)}
           filters={state.filters}
           onFilter={state.setFilter}
+          onShow={state.replaceFilters}
         />
       )}
     </div>
@@ -150,11 +152,13 @@ function Dashboard({
   days,
   filters,
   onFilter,
+  onShow,
 }: {
   site: Site
   days: number
   filters: Filters
   onFilter: (key: FilterKey, value: string) => void
+  onShow: (filters: Filters) => void
 }) {
   // Recomputed per render so the range rolls over at midnight in the site's timezone.
   const { from, to } = lastDays(days, site.timezone)
@@ -168,7 +172,7 @@ function Dashboard({
     <>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
         <Overview scope={scope} />
-        <ReadingPanel />
+        <ReadingPanel scope={scope} onShow={onShow} />
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
         <BreakdownPanel

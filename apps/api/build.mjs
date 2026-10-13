@@ -9,5 +9,9 @@ await esbuild.build({
   target: 'node22',
   // Workspace packages are bundled; third-party dependencies stay in node_modules.
   packages: 'external',
-  alias: { '@recount/shared': '../../packages/shared/src/index.ts' },
+  alias: {
+    '@recount/shared': '../../packages/shared/src/index.ts',
+    '@recount/semantic': '../../packages/semantic/src/index.ts',
+    '@recount/sites': '../../sites/index.ts',
+  },
 })

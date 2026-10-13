@@ -29,9 +29,15 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.4
         version: 2.1.4(hono@4.13.13)
+      '@recount/semantic':
+        specifier: workspace:^
+        version: link:../../packages/semantic
       '@recount/shared':
         specifier: workspace:^
         version: link:../../packages/shared
+      '@recount/sites':
+        specifier: workspace:^
+        version: link:../../sites
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(postgres@3.4.9)
@@ -120,6 +126,12 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+
+  sites:
+    dependencies:
+      '@recount/semantic':
+        specifier: workspace:^
+        version: link:../packages/semantic
 
 packages:
 
