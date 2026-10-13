@@ -12,6 +12,13 @@ import type { ElementContext, EventPayload, IdentityMode } from '@recount/shared
  *                 attribution; `cookieless` sets nothing and lets the server hash IP + UA daily.
  *   data-replay   Share of sessions to record for replay, 0 to 1 (default 0). Cookie mode only;
  *                 the recorder is a separate script loaded just for sampled sessions.
+ *   data-compat   `plausible` also answers `plausible(name, { props, callback })` calls, queued
+ *                 ones included, so a site moved off Plausible keeps its event code. Set it only
+ *                 once the Plausible script is gone; otherwise the two scripts fight over it.
+ *
+ * Custom events: `recount('Signup', { props: { plan: 'pro' }, callback })`. To call it before
+ * the deferred script has loaded, define a queue first:
+ *   <script>window.recount=window.recount||function(){(window.recount.q=window.recount.q||[]).push(arguments)}</script>
  *
  * Markup hints:
  *   data-rc-event="Name"    Clicking the element sends a custom event with that name.
@@ -24,7 +31,13 @@ import type { ElementContext, EventPayload, IdentityMode } from '@recount/shared
  * cookies instead.
  */
 
-type Props = Record<string, string | number | boolean>
+type Props = Record<string, string | number | boolean | null | undefined>
+
+interface Options {
+  props?: Props
+  /** Runs once the event has been sent, or right away when it is not. */
+  callback?: () => void
+}
 
 const VISITOR_COOKIE = 'rc_vid'
 const SESSION_COOKIE = 'rc_sid'
@@ -150,8 +163,8 @@ function describe(el: Element): ElementContext {
 
 // --- Sending -----------------------------------------------------------------------------
 
-function send(name: string, extra: { props?: Props; el?: ElementContext } = {}) {
-  if (ignored()) return
+function send(name: string, extra: { props?: Props; el?: ElementContext } = {}): Promise<void> {
+  if (ignored()) return Promise.resolve()
   const payload: EventPayload = {
     s: site,
     n: name,
@@ -166,27 +179,41 @@ function send(name: string, extra: { props?: Props; el?: ElementContext } = {}) 
     el: extra.el,
   }
   if (extra.props) {
-    payload.p = Object.fromEntries(Object.entries(extra.props).map(([k, v]) => [k, String(v)]))
+    payload.p = Object.fromEntries(
+      Object.entries(extra.props).flatMap(([k, v]) => (v == null ? [] : [[k, String(v)]])),
+    )
   }
   if (mode === 'cookie') Object.assign(payload, identity())
 
   // text/plain keeps this a "simple" request, so no CORS preflight is needed.
-  fetch(endpoint, {
+  return fetch(endpoint, {
     method: 'POST',
     body: JSON.stringify(payload),
     headers: { 'Content-Type': 'text/plain' },
     keepalive: true,
-  }).catch(() => {})
+  }).then(
+    () => {},
+    () => {},
+  )
 }
 
 let lastUrl: string | undefined
 
-function pageview() {
+function pageview(): Promise<void> {
   // Hash changes (in-page anchors) are not new pages.
   const url = location.href.split('#')[0]
-  if (url === lastUrl) return
+  if (url === lastUrl) return Promise.resolve()
   lastUrl = url
-  send('pageview')
+  return send('pageview')
+}
+
+/** A custom event from page code. A manual pageview is the automatic one, so it is not doubled. */
+function track(name: unknown, options?: Options) {
+  if (typeof name !== 'string' || !name) return
+  const props = options?.props && typeof options.props === 'object' ? options.props : undefined
+  const sent = name === 'pageview' ? pageview() : send(name, { props })
+  const callback = options?.callback
+  if (typeof callback === 'function') sent.then(() => callback())
 }
 
 function onClick(event: MouseEvent) {
@@ -208,33 +235,41 @@ window.addEventListener('popstate', pageview)
 document.addEventListener('click', onClick, { capture: true })
 
 interface Recount {
-  (name: string, options?: { props?: Props }): void
+  (name: string, options?: Options): void
   /** The visitor and session ids to attach to a checkout; empty in cookieless mode. */
   ids(): { recount_vid?: string; recount_sid?: string }
 }
 
+/** The queueing stub a page defines before the script loads, holding each call's arguments. */
+type Stub = { q?: ArrayLike<unknown>[] }
+
 declare global {
   interface Window {
-    recount?: Recount
+    recount?: Recount & Stub
+    plausible?: ((name: string, options?: Options) => void) & Stub
   }
 }
-const recount: Recount = Object.assign(
-  (name: string, options?: { props?: Props }) => send(name, { props: options?.props }),
-  {
-    ids() {
-      if (mode !== 'cookie') return {}
-      // Reading the ids does not extend the session; only tracked events do.
-      const vid = readCookie(VISITOR_COOKIE)
-      const sid = readCookie(SESSION_COOKIE)
-      if (vid && sid) return { recount_vid: vid, recount_sid: sid }
-      const fresh = identity()
-      return { recount_vid: fresh.vid, recount_sid: fresh.sid }
-    },
+const queued = [...(window.recount?.q ?? [])]
+const compat = script?.dataset.compat === 'plausible'
+if (compat) queued.push(...(window.plausible?.q ?? []))
+
+const recount: Recount = Object.assign((name: string, options?: Options) => track(name, options), {
+  ids() {
+    if (mode !== 'cookie') return {}
+    // Reading the ids does not extend the session; only tracked events do.
+    const vid = readCookie(VISITOR_COOKIE)
+    const sid = readCookie(SESSION_COOKIE)
+    if (vid && sid) return { recount_vid: vid, recount_sid: sid }
+    const fresh = identity()
+    return { recount_vid: fresh.vid, recount_sid: fresh.sid }
   },
-)
+})
 window.recount = recount
+if (compat) window.plausible = (name, options) => track(name, options)
 
 pageview()
+// Calls queued before the script loaded go out after the first pageview, as they happened.
+for (const args of queued) track(args[0], args[1] as Options | undefined)
 
 // --- Replay ------------------------------------------------------------------------------
 

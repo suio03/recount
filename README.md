@@ -45,6 +45,10 @@ Then add the tracker to that site:
 <script defer src="https://<recount-host>/js/script.js" data-site="example.com"></script>
 ```
 
+Custom events are `recount('Signup', { props: { plan: 'pro' } })`. Coming from Plausible, add
+`data-compat="plausible"` once the Plausible script is removed, and existing `plausible(...)`
+calls, queued ones included, are sent to Recount unchanged.
+
 Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 ## License
