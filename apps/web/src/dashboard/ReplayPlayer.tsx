@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, type ReplaySession } from '../api'
 import { cx } from '../ui/cx'
 import { SegmentedControl } from '../ui/SegmentedControl'
-import { clock, MOMENT_TONES } from './moments'
+import { clock, LEAD_IN_MS, MOMENT_TONES } from './moments'
 
 const SPEEDS = [
   { value: '1', label: '1×' },
@@ -252,7 +252,7 @@ function Player({
             <li key={`${m.t}-${m.kind}`}>
               <button
                 type="button"
-                onClick={() => seek(Math.max(0, m.t - 1500), true)}
+                onClick={() => seek(Math.max(0, m.t - LEAD_IN_MS), true)}
                 aria-current={i === current ? 'step' : undefined}
                 title="Play from just before this moment"
                 className="grid w-full cursor-pointer grid-cols-[3.25rem_minmax(0,1fr)] items-baseline gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-sunken aria-[current=step]:bg-sunken"

@@ -144,6 +144,26 @@ export interface Replays {
   sessions: ReplaySession[]
 }
 
+export interface ReplayDigest {
+  digest: {
+    headline: string
+    patterns: Array<{
+      kind: 'friction' | 'intent' | 'progress'
+      title: string
+      text: string
+      /** Distinct sessions the pattern rests on. */
+      sessions: number
+      /** `t` is where the cited moment happens; null cites the whole visit. */
+      evidence: Array<{ session: string; t: number | null }>
+    }>
+  } | null
+  /** Summarized sessions the digest reads. */
+  sessions: number
+  status: 'ok' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  error?: string
+  generatedAt?: string
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
@@ -175,6 +195,8 @@ export const api = {
   reading: (scope: Scope, refresh = false) =>
     get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
+  replayDigest: (scope: Scope, refresh = false) =>
+    get<ReplayDigest>(stats(scope, 'replays/digest', refresh ? { refresh: '1' } : {})),
   recording: (siteId: string, session: string) =>
     get<{ events: unknown[] }>(`/api/sites/${siteId}/replays/${session}`),
 }

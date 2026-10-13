@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../db/postgres'
 import { readingFor } from '../reading'
+import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
 import {
@@ -128,3 +129,11 @@ statsRoutes.get('/reading', async (c) =>
 
 /** Recorded sessions in scope with their AI summaries, newest first. */
 statsRoutes.get('/replays', async (c) => c.json(await replaysFor(c.get('scope'))))
+
+/**
+ * What the range's summarized sessions have in common, each pattern citing its sessions.
+ * `refresh=1` rewrites a cached digest.
+ */
+statsRoutes.get('/replays/digest', async (c) =>
+  c.json(await digestFor(c.get('scope'), { refresh: c.req.query('refresh') === '1' })),
+)

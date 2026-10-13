@@ -6,7 +6,8 @@ import { cx } from '../ui/cx'
 import { Panel } from '../ui/Panel'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { countryName, duration, money } from './format'
-import { clock, MOMENT_TONES } from './moments'
+import { clock, LEAD_IN_MS, MOMENT_TONES } from './moments'
+import { PatternsDigest } from './PatternsDigest'
 
 // The player carries rrweb, so it loads only when a replay is opened.
 const ReplayPlayer = lazy(() => import('./ReplayPlayer').then((m) => ({ default: m.ReplayPlayer })))
@@ -41,8 +42,8 @@ const CONVERTED = new Set<ReplayOutcome>(['purchased', 'converted'])
 
 const COLLAPSED_ROWS = 5
 
-/** Moments open the replay this long before they happen, to show what led up to them. */
-const LEAD_IN_MS = 1500
+/** The fewest summarized sessions worth looking for patterns across; the API agrees. */
+const MIN_FOR_PATTERNS = 3
 
 /**
  * Recorded visits worth knowing about, each told in a sentence by the AI so nobody has to
@@ -92,6 +93,13 @@ export function SessionsPanel({ scope, timezone }: { scope: Scope; timezone: str
         </p>
       ) : (
         <>
+          {data.sessions.length >= MIN_FOR_PATTERNS && (
+            <PatternsDigest
+              scope={scope}
+              sessions={data.sessions}
+              onWatch={(session, start) => setWatching({ session, start })}
+            />
+          )}
           {shown.length === 0 ? (
             <p className="m-0 py-4 text-center text-muted">No sessions like that in this range.</p>
           ) : (
