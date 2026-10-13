@@ -150,4 +150,4 @@ pnpm --filter @recount/api replay summarize <domain> [session]
 
 ## License
 
-AGPL-3.0. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
