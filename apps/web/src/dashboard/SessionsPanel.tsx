@@ -1,11 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, Play } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
 import { api, type ReplayOutcome, type ReplayReason, type ReplaySession, type Scope } from '../api'
 import { cx } from '../ui/cx'
 import { Panel } from '../ui/Panel'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { countryName, duration, money } from './format'
+import { clock, MOMENT_TONES } from './moments'
+
+// The player carries rrweb, so it loads only when a replay is opened.
+const ReplayPlayer = lazy(() => import('./ReplayPlayer').then((m) => ({ default: m.ReplayPlayer })))
 
 const OUTCOMES: Record<ReplayOutcome, { label: string; tone: string }> = {
   purchased: { label: 'Purchased', tone: 'bg-revenue-soft text-revenue' },
@@ -25,8 +29,6 @@ const REASONS: Record<ReplayReason, string> = {
   key_event: 'Key event',
 }
 
-const MOMENT_TONES = { friction: 'bg-down', progress: 'bg-up', intent: 'bg-line-strong' }
-
 const SHOWS = [
   { value: 'all', label: 'All' },
   { value: 'problems', label: 'Problems' },
@@ -39,11 +41,8 @@ const CONVERTED = new Set<ReplayOutcome>(['purchased', 'converted'])
 
 const COLLAPSED_ROWS = 5
 
-/** "01:07": where in the recording a moment happens. */
-const clock = (ms: number) => {
-  const s = Math.floor(ms / 1000)
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
+/** Moments open the replay this long before they happen, to show what led up to them. */
+const LEAD_IN_MS = 1500
 
 /**
  * Recorded visits worth knowing about, each told in a sentence by the AI so nobody has to
@@ -52,6 +51,7 @@ const clock = (ms: number) => {
 export function SessionsPanel({ scope, timezone }: { scope: Scope; timezone: string }) {
   const [show, setShow] = useState<Show>('all')
   const [expanded, setExpanded] = useState(false)
+  const [watching, setWatching] = useState<{ session: ReplaySession; start: number }>()
   const query = useQuery({
     queryKey: ['replays', scope],
     queryFn: () => api.replays(scope),
@@ -97,7 +97,13 @@ export function SessionsPanel({ scope, timezone }: { scope: Scope; timezone: str
           ) : (
             <ul className="m-0 grid list-none p-0">
               {visible.map((s) => (
-                <Row key={s.id} session={s} currency={data.currency} when={when} />
+                <Row
+                  key={s.id}
+                  session={s}
+                  currency={data.currency}
+                  when={when}
+                  onWatch={(start) => setWatching({ session: s, start })}
+                />
               ))}
             </ul>
           )}
@@ -118,6 +124,16 @@ export function SessionsPanel({ scope, timezone }: { scope: Scope; timezone: str
           </footer>
         </>
       )}
+      {watching && (
+        <Suspense>
+          <ReplayPlayer
+            siteId={scope.siteId}
+            session={watching.session}
+            start={watching.start}
+            onClose={() => setWatching(undefined)}
+          />
+        </Suspense>
+      )}
     </Panel>
   )
 }
@@ -126,10 +142,13 @@ function Row({
   session: s,
   currency,
   when,
+  onWatch,
 }: {
   session: ReplaySession
   currency: string
   when: Intl.DateTimeFormat
+  /** Opens the replay at this many milliseconds in. */
+  onWatch: (start: number) => void
 }) {
   const [open, setOpen] = useState(false)
   const outcome = OUTCOMES[s.summary.outcome] ?? OUTCOMES.browsed
@@ -190,22 +209,36 @@ function Row({
         />
       </button>
       {open && (
-        <div className="grid gap-2 pb-4 font-serif">
-          <p className="m-0 text-note text-muted">{s.summary.intent}</p>
-          <ol className="m-0 grid list-none gap-1.5 p-0">
+        <div className="grid gap-2 pb-4">
+          <p className="m-0 font-serif text-note text-muted">{s.summary.intent}</p>
+          <ol className="m-0 grid list-none gap-0.5 p-0">
             {s.summary.moments.map((m) => (
-              <li
-                key={`${m.t}-${m.text}`}
-                className="grid grid-cols-[3rem_minmax(0,1fr)] items-baseline gap-2"
-              >
-                <span className="flex items-center gap-1.5 font-mono text-label text-muted tabular-nums">
-                  <span className={cx('size-1.5 rounded-full', MOMENT_TONES[m.kind])} />
-                  {clock(m.t)}
-                </span>
-                <span className="text-note">{m.text}</span>
+              <li key={`${m.t}-${m.text}`}>
+                <button
+                  type="button"
+                  onClick={() => onWatch(Math.max(0, m.t - LEAD_IN_MS))}
+                  title="Watch this moment"
+                  className="-mx-2 grid w-[calc(100%+1rem)] cursor-pointer grid-cols-[3.25rem_minmax(0,1fr)] items-baseline gap-2 rounded-sm px-2 py-1 text-left hover:bg-sunken"
+                >
+                  <span className="flex items-center gap-1.5 font-mono text-label text-visitors tabular-nums">
+                    <span className={cx('size-1.5 shrink-0 rounded-full', MOMENT_TONES[m.kind])} />
+                    {clock(m.t)}
+                  </span>
+                  <span className="font-serif text-note">{m.text}</span>
+                </button>
               </li>
             ))}
           </ol>
+          <div>
+            <button
+              type="button"
+              onClick={() => onWatch(0)}
+              className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm border border-line px-2.5 text-label font-medium hover:bg-sunken"
+            >
+              <Play className="size-3.5" strokeWidth={2} />
+              Watch replay
+            </button>
+          </div>
         </div>
       )}
     </li>

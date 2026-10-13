@@ -83,6 +83,9 @@ importers:
       '@fontsource-variable/source-serif-4':
         specifier: ^5.3.1
         version: 5.3.1
+      '@rrweb/replay':
+        specifier: 2.1.6
+        version: 2.1.6
       '@tanstack/react-query':
         specifier: ^5.104.2
         version: 5.104.2(react@19.3.0)
@@ -485,6 +488,9 @@ packages:
 
   '@rrweb/record@2.1.6':
     resolution: {integrity: sha512-dHOrWa97l3C+BBsUd+zgLtErTZavzudJunu1HN2bV6WhTBLGk7z8BY1fWw0QerYK7qJJyrBE9D6XHcISVdVGQQ==}
+
+  '@rrweb/replay@2.1.6':
+    resolution: {integrity: sha512-Ti7zPk3Lbp33N9rKtIPCCIbUm4ctJMRRIMG5/5uI70M0efpSC1cpo/Eq8ELVW/5zWrkiElgmnPR0+h+oS79ASA==}
 
   '@rrweb/types@2.1.6':
     resolution: {integrity: sha512-DacFzGpPbQ91q3rRyh/AeZrtFYYonmLT+qgGlmh2iGcW2HPnrABJNgJWhpyzYwp/xed6Fbpi8yMxhRBlrOY0ZA==}
@@ -1479,6 +1485,11 @@ snapshots:
     dependencies:
       '@rrweb/types': 2.1.6
       '@rrweb/utils': 2.1.6
+      rrweb: 2.1.6
+
+  '@rrweb/replay@2.1.6':
+    dependencies:
+      '@rrweb/types': 2.1.6
       rrweb: 2.1.6
 
   '@rrweb/types@2.1.6': {}

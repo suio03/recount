@@ -175,4 +175,6 @@ export const api = {
   reading: (scope: Scope, refresh = false) =>
     get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
+  recording: (siteId: string, session: string) =>
+    get<{ events: unknown[] }>(`/api/sites/${siteId}/replays/${session}`),
 }

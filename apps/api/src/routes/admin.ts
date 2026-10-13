@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '../db/postgres'
 import { sites } from '../db/schema'
 import { env } from '../env'
+import { playable, recordingOf } from '../replay/sessions'
 import { statsRoutes } from './stats'
 
 export const adminRoutes = new Hono()
@@ -38,3 +39,13 @@ adminRoutes.post('/api/sites', async (c) => {
 })
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)
+
+/** A session's recording, for the replay player. Offsets count from its first event. */
+adminRoutes.get('/api/sites/:id/replays/:session', async (c) => {
+  const session = c.req.param('session')
+  if (!/^\d{1,20}$/.test(session)) return c.json({ error: 'invalid session' }, 400)
+  const recording = await recordingOf(c.req.param('id'), session).catch(() => undefined)
+  const events = recording && playable(recording.loads)
+  if (!events?.length) return c.json({ error: 'not found' }, 404)
+  return c.json({ events })
+})

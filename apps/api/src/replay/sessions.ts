@@ -16,8 +16,8 @@ interface Chunk {
   data: string
 }
 
-/** Extracts one session's timeline from its stored chunks and saves it. */
-export async function extractSession(siteId: string, sessionId: string) {
+/** A session's stored recording: its page loads, each an ordered list of rrweb events. */
+export async function recordingOf(siteId: string, sessionId: string) {
   const chunks = await rows<Chunk>(
     `SELECT load_id, seq, toString(visitor_id) AS visitor_id, data
      FROM replay_chunks FINAL
@@ -32,7 +32,26 @@ export async function extractSession(siteId: string, sessionId: string) {
     events.push(...(JSON.parse(c.data) as RrwebEvent[]))
     loads.set(c.load_id, events)
   }
-  const result = extract([...loads.values()])
+  return { visitorId: chunks[0]?.visitor_id, loads: [...loads.values()] }
+}
+
+/**
+ * The events a player needs, in time order. Loads whose snapshot was lost are left out, as
+ * extraction leaves them out, so a moment's offset lands on the same instant in the replay.
+ */
+export function playable(loads: RrwebEvent[][]) {
+  return loads
+    .filter((l) => l.some((e) => e.type === 2))
+    .flat()
+    .sort((a, b) => a.timestamp - b.timestamp)
+}
+
+/** Extracts one session's timeline from its stored chunks and saves it. */
+export async function extractSession(siteId: string, sessionId: string) {
+  const recording = await recordingOf(siteId, sessionId)
+  if (!recording) return undefined
+  const loads = recording.loads
+  const result = extract(loads)
   if (!result) return undefined
   await clickhouse.insert({
     table: 'replay_sessions',
@@ -41,7 +60,7 @@ export async function extractSession(siteId: string, sessionId: string) {
       {
         site_id: siteId,
         session_id: sessionId,
-        visitor_id: chunks[0]?.visitor_id,
+        visitor_id: recording.visitorId,
         started_at: chTime(result.startedAt),
         ended_at: chTime(result.endedAt),
         ...result.counts,
