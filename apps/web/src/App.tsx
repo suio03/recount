@@ -9,6 +9,7 @@ import { lastDays, rangeLabel } from './dashboard/format'
 import { GoalsPanel } from './dashboard/GoalsPanel'
 import { Overview } from './dashboard/Overview'
 import { ReadingPanel } from './dashboard/ReadingPanel'
+import { SessionsPanel } from './dashboard/SessionsPanel'
 import { SegmentedControl } from './ui/SegmentedControl'
 
 const RANGES = [
@@ -177,6 +178,7 @@ function Dashboard({
           <ReadingPanel scope={scope} onShow={onShow} />
         </div>
       </div>
+      <SessionsPanel scope={scope} timezone={site.timezone} />
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
         <BreakdownPanel
           title="Acquisition"

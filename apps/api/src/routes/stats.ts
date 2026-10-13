@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { db } from '../db/postgres'
 import { readingFor } from '../reading'
+import { replaysFor } from '../replay/list'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
 import {
   goalsOf,
@@ -124,3 +125,6 @@ statsRoutes.get('/goals', async (c) => {
 statsRoutes.get('/reading', async (c) =>
   c.json(await readingFor(c.get('scope'), { refresh: c.req.query('refresh') === '1' })),
 )
+
+/** Recorded sessions in scope with their AI summaries, newest first. */
+statsRoutes.get('/replays', async (c) => c.json(await replaysFor(c.get('scope'))))

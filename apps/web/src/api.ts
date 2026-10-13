@@ -99,6 +99,51 @@ export interface ReadingResult {
   error?: string
 }
 
+export type ReplayReason =
+  | 'paid'
+  | 'abandoned_form'
+  | 'error'
+  | 'rage_click'
+  | 'dead_clicks'
+  | 'key_event'
+
+export type ReplayOutcome =
+  | 'purchased'
+  | 'converted'
+  | 'gave_up'
+  | 'stuck'
+  | 'browsed'
+  | 'left_quickly'
+
+export interface ReplaySession {
+  id: string
+  startedAt: string
+  reasons: ReplayReason[]
+  summary: {
+    headline: string
+    intent: string
+    outcome: ReplayOutcome
+    /** `t` is milliseconds from the start of the recording. */
+    moments: Array<{ t: number; kind: 'friction' | 'intent' | 'progress'; text: string }>
+  }
+  entry: string
+  channel: string
+  referrer: string
+  country: string
+  device: string
+  browser: string
+  duration: number
+  pages: number
+  revenue: number
+}
+
+export interface Replays {
+  currency: string
+  /** Recorded sessions in scope, summarized or not. */
+  recorded: number
+  sessions: ReplaySession[]
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
@@ -129,4 +174,5 @@ export const api = {
   goals: (scope: Scope) => get<Goals>(stats(scope, 'goals')),
   reading: (scope: Scope, refresh = false) =>
     get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
+  replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
 }
