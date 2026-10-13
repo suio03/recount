@@ -33,31 +33,48 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 
 ## Storage
 
-- ClickHouse: `events` (pageviews, clicks, custom events with semantic context), `ai_crawls`;
-  later `interactions` (replay-derived timeline).
-- PostgreSQL: sites, salts; later users, goals, funnels, payment connections and transactions,
-  AI insights.
-- Object storage (R2 or MinIO): raw session recordings, sampled and expiring.
+- ClickHouse: `events` (pageviews, clicks, custom events with semantic context), `ai_crawls`,
+  `payments`, `replay_chunks` (raw rrweb batches, kept 30 days) and `replay_sessions`
+  (extracted timelines, kept 180 days).
+- PostgreSQL: sites, salts, revenue sources, cached readings and replay summaries; later goals,
+  funnels and users.
 
 ## Roadmap
 
-1. **Foundation** (done in skeleton): tracker, ingestion, identity, channels, main stats, web shell.
-2. **Dashboard**: breakdowns (source, page, location, device), goals, funnels, revenue bars, visx
-   charts, geo database (DB-IP Lite), auth.
-3. **Data migration**: import `events_v2`/`sessions_v2` and the payment ledger from the Plausible
+Updated 2026-10-14.
+
+Done:
+
+1. **Foundation**: tracker, ingestion, identity, channels, main stats, filterable dashboard.
+2. **Dashboard**: breakdowns (source, page, location, device), goals from custom events, sign-in.
+3. **Revenue**: Paddle sync with visitor attribution, revenue panel and chart.
+4. **AI layer**: change detection, Claude-written readings with chart annotations, per-site
+   switch.
+5. **Session recording**: masked, sampled rrweb recorder; timeline extraction (rage and dead
+   clicks, form abandonment, errors); per-session summaries linking to replay timestamps;
+   cross-session patterns.
+6. **Shipping**: single-container image, CI publishing to GHCR and deploying through a Dokploy
+   webhook, body limits and sign-in rate limits.
+
+Next:
+
+1. **First deploy**: Recount, PostgreSQL 17 and ClickHouse 25.8 on Dokploy; switch the first
+   sites' tracker over from Plausible.
+2. **Data migration**: import `events_v2`/`sessions_v2` and the payment ledger from the Plausible
    fork. Imported history is cookieless (daily hashes).
-4. **Revenue**: Paddle/Creem sync with visitor attribution.
-5. **AI layer**: semantic catalog loading, change detection, Claude-written digests and dashboard
-   annotations, MCP server for questions.
-6. **Session recording**: rrweb recorder (lazy, sampled, masked), timeline extraction (rage/dead
-   clicks, hesitation, form abandonment, errors), per-session and cross-session AI summaries
-   linking back to replay timestamps.
-7. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+3. **AI cost control**: daily spend cap across sites and a log of model usage.
+4. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
+5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+6. **Attribution**: first touch next to last non-direct touch; Creem sync.
+7. **Questions and digests**: MCP server for asking about the data, periodic digests.
+8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
 
 ## Known gaps in the skeleton
 
-- Country comes from Cloudflare's `cf-ipcountry` header only; region and city are empty.
+- Country comes from Cloudflare's `cf-ipcountry` header, read only with `TRUST_CF_HEADERS`;
+  region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
 - One secret (`ADMIN_TOKEN`) guards the private API: scripts send it as a bearer token, and the
   dashboard trades it for a session cookie. There are no user accounts.
+- Sign-in rate limits live in process memory, which is enough for one instance.
 - SPA pageviews fire on `pushState` before the new page sets its title.
