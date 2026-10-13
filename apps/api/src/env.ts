@@ -16,10 +16,14 @@ const Env = z.object({
   REPLAY_MODEL: z.string().default('claude-haiku-5-5'),
   /** At most this many session summaries per site per day; the most notable sessions go first. */
   REPLAY_SUMMARIES_PER_DAY: z.coerce.number().int().min(0).default(50),
+  /** Read the visitor's address and country from Cloudflare's headers. Only behind Cloudflare. */
+  TRUST_CF_HEADERS: z.stringbool().default(false),
   /** Directory holding the built tracker, served at /js/script.js. */
   TRACKER_DIST: z
     .string()
     .default(new URL('../../../packages/tracker/dist', import.meta.url).pathname),
+  /** Directory holding the built dashboard, served at /. */
+  WEB_DIST: z.string().default(new URL('../../web/dist', import.meta.url).pathname),
 })
 
 export const env = Env.parse(process.env)

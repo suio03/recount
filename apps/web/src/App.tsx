@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { api, type Dimension, type FilterKey, type Filters, type Scope, type Site } from './api'
+import {
+  ApiError,
+  api,
+  type Dimension,
+  type FilterKey,
+  type Filters,
+  type Scope,
+  type Site,
+} from './api'
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
 import { FilterBar } from './dashboard/FilterBar'
 import { readFilters } from './dashboard/filters'
@@ -10,6 +18,7 @@ import { GoalsPanel } from './dashboard/GoalsPanel'
 import { Overview } from './dashboard/Overview'
 import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
+import { SignIn } from './SignIn'
 import { SegmentedControl } from './ui/SegmentedControl'
 import { Switch } from './ui/Switch'
 
@@ -57,6 +66,7 @@ export function App() {
   const state = useUrlState()
   const site = sites.data?.find((s) => s.domain === state.domain) ?? sites.data?.[0]
 
+  if (sites.error instanceof ApiError && sites.error.status === 401) return <SignIn />
   return (
     <div className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-5 pb-12 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
@@ -68,9 +78,12 @@ export function App() {
           )}
           {site && <AiSwitch site={site} />}
         </div>
-        {site && (
-          <RangePicker timezone={site.timezone} value={state.range} onChange={state.setRange} />
-        )}
+        <div className="flex items-center gap-2">
+          {site && (
+            <RangePicker timezone={site.timezone} value={state.range} onChange={state.setRange} />
+          )}
+          {sites.data && <SignOut />}
+        </div>
       </header>
 
       {sites.isError && <p className="text-muted">Could not load sites: {String(sites.error)}</p>}
@@ -96,6 +109,25 @@ export function App() {
         />
       )}
     </div>
+  )
+}
+
+function SignOut() {
+  const queryClient = useQueryClient()
+  const signOut = useMutation({
+    mutationFn: api.signOut,
+    onSuccess: () => queryClient.resetQueries(),
+  })
+  return (
+    <button
+      type="button"
+      onClick={() => signOut.mutate()}
+      aria-label="Sign out"
+      title="Sign out"
+      className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink"
+    >
+      <LogOut className="size-4" strokeWidth={1.75} />
+    </button>
   )
 }
 

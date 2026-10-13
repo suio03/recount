@@ -58,5 +58,6 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 
 - Country comes from Cloudflare's `cf-ipcountry` header only; region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
-- The private API uses one bearer token (`ADMIN_TOKEN`) until real auth lands.
+- One secret (`ADMIN_TOKEN`) guards the private API: scripts send it as a bearer token, and the
+  dashboard trades it for a session cookie. There are no user accounts.
 - SPA pageviews fire on `pushState` before the new page sets its title.

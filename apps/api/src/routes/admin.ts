@@ -1,17 +1,35 @@
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { bearerAuth } from 'hono/bearer-auth'
+import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
+import { requireAdmin, signIn, signOut } from '../auth'
 import { db } from '../db/postgres'
 import { sites } from '../db/schema'
-import { env } from '../env'
 import { playable, recordingOf } from '../replay/sessions'
 import { statsRoutes } from './stats'
 
 export const adminRoutes = new Hono()
 
-adminRoutes.use('/api/sites/*', bearerAuth({ token: env.ADMIN_TOKEN }))
-adminRoutes.use('/api/sites', bearerAuth({ token: env.ADMIN_TOKEN }))
+adminRoutes.use('/api/sites/*', requireAdmin)
+adminRoutes.use('/api/sites', requireAdmin)
+
+/** Trades ADMIN_TOKEN for the dashboard's session cookie. */
+adminRoutes.post(
+  '/api/login',
+  bodyLimit({ maxSize: 1024, onError: (c) => c.json({ error: 'too large' }, 413) }),
+  async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const token = typeof body?.token === 'string' ? body.token : ''
+    const result = signIn(c, token)
+    if (result === 'blocked') return c.json({ error: 'too many attempts' }, 429)
+    return result === 'ok' ? c.json({ ok: true }) : c.json({ error: 'wrong token' }, 401)
+  },
+)
+
+adminRoutes.post('/api/logout', (c) => {
+  signOut(c)
+  return c.json({ ok: true })
+})
 
 adminRoutes.get('/api/sites', async (c) =>
   c.json(await db.select().from(sites).orderBy(sites.domain)),

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { env } from './env'
@@ -27,3 +28,19 @@ for (const file of ['script.js', 'replay.js'])
       'Cache-Control': 'public, max-age=3600',
     })
   })
+
+// The dashboard. Its file names are content-hashed, so they can be cached for good; every other
+// path gets index.html and the app reads the view from the query string.
+app.use(
+  '/assets/*',
+  serveStatic({
+    root: env.WEB_DIST,
+    onFound: (_, c) => c.header('Cache-Control', 'public, max-age=31536000, immutable'),
+  }),
+)
+app.get('*', async (c, next) => {
+  if (c.req.path.startsWith('/api/')) return next()
+  const html = await readFile(`${env.WEB_DIST}/index.html`, 'utf8').catch(() => null)
+  if (html === null) return c.text('dashboard not built', 503)
+  return c.html(html, 200, { 'Cache-Control': 'no-cache' })
+})

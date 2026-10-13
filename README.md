@@ -69,13 +69,14 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 | Variable | Default | What |
 |---|---|---|
-| `ADMIN_TOKEN` | required | Bearer token for the private API, at least 24 characters |
+| `ADMIN_TOKEN` | required | Bearer token for the private API and the dashboard's sign-in, at least 24 characters |
 | `DATABASE_URL`, `CLICKHOUSE_*` | see `.env.example` | Database connections |
 | `PUBLIC_URL` | `http://localhost:8787` | Where the API is reached; the dev dashboard proxies to it |
 | `ANTHROPIC_API_KEY` | unset | Enables AI analysis. Without it, AI-enabled sites show only the detected changes |
 | `READING_MODEL` | `claude-sonnet-5-5` | Model for readings and cross-session patterns |
 | `REPLAY_MODEL` | `claude-haiku-5-5` | Model for single-session summaries |
 | `REPLAY_SUMMARIES_PER_DAY` | `50` | Session summaries per site per day (UTC); `0` turns the job off |
+| `TRUST_CF_HEADERS` | `false` | Take the visitor's address and country from Cloudflare's headers. Set it only when Cloudflare proxies every request; otherwise the address comes from `X-Forwarded-For` and there is no country |
 
 ## Adding a site
 
@@ -147,6 +148,22 @@ pnpm --filter @recount/api replay extract [domain]
 pnpm --filter @recount/api replay show <domain> [session]
 pnpm --filter @recount/api replay summarize <domain> [session]
 ```
+
+## Deployment
+
+Every push to `main` that passes CI is published as a multi-platform image,
+`ghcr.io/suio03/recount:latest` (plus `sha-<commit>`). One container serves the API, the dashboard
+and the tracker on port 8787, and applies new migrations each time it starts. It needs PostgreSQL
+17 and ClickHouse 25.8.
+
+All configuration, secrets included, comes from the container's environment; the image holds
+none. Behind a TLS proxy, open the dashboard and sign in with `ADMIN_TOKEN`; the browser keeps a
+30-day session cookie, and changing the token signs every browser out.
+
+To deploy automatically, put the deploy webhook of the app that runs the image (Dokploy, or
+anything with one) in a `DOKPLOY_DEPLOY_URL` secret of the repository's `production`
+environment. CI calls it once the new image is published. Without the secret, CI publishes the
+image and stops there.
 
 ## License
 

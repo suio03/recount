@@ -1,5 +1,6 @@
 import { gunzipSync } from 'node:zlib'
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { isbot } from 'isbot'
 import { z } from 'zod'
 import { clickhouse } from '../db/clickhouse'
@@ -31,46 +32,50 @@ function decode(body: Buffer): unknown {
   return JSON.parse(text)
 }
 
-replayRoutes.post('/api/replay', async (c) => {
-  const accepted = () => c.body(null, 202)
-  const params = Params.safeParse(c.req.query())
-  if (!params.success) return c.json({ error: 'invalid parameters' }, 400)
+// Enforced while the body streams in, before any of it is buffered whole.
+replayRoutes.post(
+  '/api/replay',
+  bodyLimit({ maxSize: MAX_BODY, onError: (c) => c.json({ error: 'too large' }, 413) }),
+  async (c) => {
+    const accepted = () => c.body(null, 202)
+    const params = Params.safeParse(c.req.query())
+    if (!params.success) return c.json({ error: 'invalid parameters' }, 400)
 
-  const userAgent = c.req.header('user-agent') ?? ''
-  if (!userAgent || isbot(userAgent)) return accepted()
-  const site = await siteByDomain(params.data.s)
-  if (!site) return accepted()
+    const userAgent = c.req.header('user-agent') ?? ''
+    if (!userAgent || isbot(userAgent)) return accepted()
+    const site = await siteByDomain(params.data.s)
+    if (!site) return accepted()
 
-  const body = Buffer.from(await c.req.arrayBuffer())
-  if (body.length > MAX_BODY) return c.json({ error: 'too large' }, 413)
-  let events: z.infer<typeof RrwebEvent>[]
-  try {
-    const parsed = z.array(RrwebEvent).min(1).safeParse(decode(body))
-    if (!parsed.success) return c.json({ error: 'invalid events' }, 400)
-    events = parsed.data
-  } catch {
-    return c.json({ error: 'invalid body' }, 400)
-  }
+    const body = Buffer.from(await c.req.arrayBuffer())
+    let events: z.infer<typeof RrwebEvent>[]
+    try {
+      const parsed = z.array(RrwebEvent).min(1).safeParse(decode(body))
+      if (!parsed.success) return c.json({ error: 'invalid events' }, 400)
+      events = parsed.data
+    } catch {
+      return c.json({ error: 'invalid body' }, 400)
+    }
 
-  const times = events.map((e) => e.timestamp)
-  const { vid, sid, load, seq } = params.data
-  await clickhouse.insert({
-    table: 'replay_chunks',
-    format: 'JSONEachRow',
-    values: [
-      {
-        site_id: site.id,
-        // Hashed exactly like the tracker's events, so recordings join to sessions.
-        session_id: hash64(site.id, sid).toString(),
-        visitor_id: hash64(site.id, vid).toString(),
-        load_id: load,
-        seq,
-        started_at: chTime(Math.min(...times)),
-        ended_at: chTime(Math.max(...times)),
-        events: events.length,
-        data: JSON.stringify(events),
-      },
-    ],
-  })
-  return accepted()
-})
+    const times = events.map((e) => e.timestamp)
+    const { vid, sid, load, seq } = params.data
+    await clickhouse.insert({
+      table: 'replay_chunks',
+      format: 'JSONEachRow',
+      values: [
+        {
+          site_id: site.id,
+          // Hashed exactly like the tracker's events, so recordings join to sessions.
+          session_id: hash64(site.id, sid).toString(),
+          visitor_id: hash64(site.id, vid).toString(),
+          load_id: load,
+          seq,
+          started_at: chTime(Math.min(...times)),
+          ended_at: chTime(Math.max(...times)),
+          events: events.length,
+          data: JSON.stringify(events),
+        },
+      ],
+    })
+    return accepted()
+  },
+)

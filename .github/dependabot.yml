@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request for all minor and patch updates; majors come one by one.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # The recorder and player must stay on the same rrweb version, pinned in package.json.
+      - dependency-name: "rrweb"
+      - dependency-name: "@rrweb/*"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

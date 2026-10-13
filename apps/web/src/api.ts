@@ -166,9 +166,19 @@ export interface ReplayDigest {
   generatedAt?: string
 }
 
+/** A failed request; status 401 means the browser is not signed in. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(`${status} ${message}`)
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  if (!res.ok) throw new ApiError(res.status, await res.text())
   return res.json() as Promise<T>
 }
 
@@ -178,7 +188,7 @@ async function send<T>(method: string, path: string, body: unknown): Promise<T> 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  if (!res.ok) throw new ApiError(res.status, await res.text())
   return res.json() as Promise<T>
 }
 
@@ -201,6 +211,8 @@ const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) =
 export const api = {
   sites: () => get<Site[]>('/api/sites'),
   setAi: (siteId: string, ai: boolean) => send<Site>('PATCH', `/api/sites/${siteId}`, { ai }),
+  signIn: (token: string) => send<{ ok: true }>('POST', '/api/login', { token }),
+  signOut: () => send<{ ok: true }>('POST', '/api/logout', {}),
   main: (scope: Scope) => get<MainStats>(stats(scope, 'main')),
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),
