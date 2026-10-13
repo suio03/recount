@@ -45,6 +45,9 @@ Then add the tracker to that site:
 <script defer src="https://<recount-host>/js/script.js" data-site="example.com"></script>
 ```
 
+AI analysis (the dashboard reading, replay summaries and the patterns across them) is off for a
+new site. Turn it on with the switch next to the site name, or add `"ai": true` when creating it.
+
 Custom events are `recount('Signup', { props: { plan: 'pro' } })`. Coming from Plausible, add
 `data-compat="plausible"` once the Plausible script is removed, and existing `plausible(...)`
 calls, queued ones included, are sent to Recount unchanged.

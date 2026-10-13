@@ -17,10 +17,10 @@ export interface ReadingResponse {
   findings: Finding[]
   reading: Reading | null
   /**
-   * Why there is no reading: no API key, a key the API refused, no credit left, or another
-   * failure of the model call.
+   * Why there is no reading: AI analysis is off for the site, no API key, a key the API
+   * refused, no credit left, or another failure of the model call.
    */
-  status: 'ok' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
   error?: string
 }
 
@@ -39,16 +39,16 @@ function cacheKey(scope: Scope) {
 }
 
 /**
- * The findings and reading for a scope. Without an API key the findings are computed fresh;
+ * The findings and reading for a scope. With AI off or no API key the findings are computed fresh;
  * with one, both are cached together so evidence ids keep pointing at the numbers the model saw.
  */
 export async function readingFor(scope: Scope, { refresh = false } = {}): Promise<ReadingResponse> {
   const semantics = semanticsFor(scope.site.domain)
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!scope.site.ai || !env.ANTHROPIC_API_KEY) {
     return {
       findings: await detectChanges(scope, semantics),
       reading: null,
-      status: 'unconfigured',
+      status: scope.site.ai ? 'unconfigured' : 'off',
     }
   }
 

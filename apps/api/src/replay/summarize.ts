@@ -160,11 +160,12 @@ export async function summarizeSite(site: Site) {
   return written
 }
 
-/** Summarizes notable sessions on every site, when an API key is set. */
+/** Summarizes notable sessions on every site with AI analysis on, when an API key is set. */
 export async function summarizeAll() {
   if (!env.ANTHROPIC_API_KEY) return 0
   let written = 0
-  for (const site of await db.select().from(sites)) written += await summarizeSite(site)
+  for (const site of await db.select().from(sites).where(eq(sites.ai, true)))
+    written += await summarizeSite(site)
   return written
 }
 

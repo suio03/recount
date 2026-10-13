@@ -76,7 +76,7 @@ const DEVICES: Array<[[string, string, string], number]> = [
 ]
 
 async function main() {
-  await db.insert(sites).values({ domain: DOMAIN, name: 'Demo' }).onConflictDoNothing()
+  await db.insert(sites).values({ domain: DOMAIN, name: 'Demo', ai: true }).onConflictDoNothing()
   const site = await db.query.sites.findFirst({ where: (s, { eq }) => eq(s.domain, DOMAIN) })
   if (!site) throw new Error('demo site missing')
   // Cached readings describe the old data.

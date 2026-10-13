@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { bearerAuth } from 'hono/bearer-auth'
 import { z } from 'zod'
@@ -24,18 +25,31 @@ const NewSite = z.object({
     .transform((d) => d.toLowerCase().replace(/^www\./, '')),
   name: z.string().min(1).max(100).optional(),
   timezone: z.string().default('UTC'),
+  ai: z.boolean().default(false),
 })
 
 adminRoutes.post('/api/sites', async (c) => {
   const parsed = NewSite.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400)
-  const { domain, name, timezone } = parsed.data
+  const { domain, name, timezone, ai } = parsed.data
   const [site] = await db
     .insert(sites)
-    .values({ domain, name: name ?? domain, timezone })
+    .values({ domain, name: name ?? domain, timezone, ai })
     .onConflictDoNothing()
     .returning()
   return site ? c.json(site, 201) : c.json({ error: 'site exists' }, 409)
+})
+
+const SiteChange = z.object({ ai: z.boolean() })
+
+/** Turns the model's reading of a site on or off. */
+adminRoutes.patch('/api/sites/:id', async (c) => {
+  const parsed = SiteChange.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400)
+  const id = c.req.param('id')
+  if (!z.uuid().safeParse(id).success) return c.json({ error: 'invalid site' }, 400)
+  const [site] = await db.update(sites).set(parsed.data).where(eq(sites.id, id)).returning()
+  return site ? c.json(site) : c.json({ error: 'not found' }, 404)
 })
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)

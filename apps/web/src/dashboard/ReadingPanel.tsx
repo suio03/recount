@@ -171,6 +171,12 @@ function Body({ data, onShow }: { data: ReadingResult; onShow: (filters: Filters
         </div>
       )}
 
+      {data.status === 'off' && (
+        <p className="m-0 text-muted">
+          AI analysis is off for this site, so these changes are not explained. Turn it on at the
+          top of the page.
+        </p>
+      )}
       {data.status === 'unconfigured' && (
         <p className="m-0 text-muted">
           Set <code className="font-mono text-path">ANTHROPIC_API_KEY</code> in{' '}

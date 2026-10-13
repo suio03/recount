@@ -41,7 +41,7 @@ export function PatternsDigest({
     }
   }
 
-  if (data?.status === 'too_few') return null
+  if (data?.status === 'too_few' || data?.status === 'off') return null
   return (
     <section
       aria-label="Patterns across sessions"

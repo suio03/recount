@@ -4,6 +4,8 @@ export interface Site {
   name: string
   timezone: string
   currency: string
+  /** Whether the model reads this site: the reading, replay summaries and their patterns. */
+  ai: boolean
 }
 
 export interface DateRange {
@@ -95,7 +97,7 @@ export interface ReadingResult {
     model: string
     generatedAt: string
   } | null
-  status: 'ok' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
   error?: string
 }
 
@@ -159,13 +161,23 @@ export interface ReplayDigest {
   } | null
   /** Summarized sessions the digest reads. */
   sessions: number
-  status: 'ok' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  status: 'ok' | 'off' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
   error?: string
   generatedAt?: string
 }
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  return res.json() as Promise<T>
+}
+
+async function send<T>(method: string, path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
   return res.json() as Promise<T>
 }
@@ -188,6 +200,7 @@ const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) =
 
 export const api = {
   sites: () => get<Site[]>('/api/sites'),
+  setAi: (siteId: string, ai: boolean) => send<Site>('PATCH', `/api/sites/${siteId}`, { ai }),
   main: (scope: Scope) => get<MainStats>(stats(scope, 'main')),
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),

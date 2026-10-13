@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api, type Dimension, type FilterKey, type Filters, type Scope, type Site } from './api'
@@ -11,6 +11,7 @@ import { Overview } from './dashboard/Overview'
 import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
 import { SegmentedControl } from './ui/SegmentedControl'
+import { Switch } from './ui/Switch'
 
 const RANGES = [
   { value: '7d', label: '7 days' },
@@ -65,6 +66,7 @@ export function App() {
           {sites.data && sites.data.length > 0 && site && (
             <SitePicker sites={sites.data} current={site} onChange={state.setDomain} />
           )}
+          {site && <AiSwitch site={site} />}
         </div>
         {site && (
           <RangePicker timezone={site.timezone} value={state.range} onChange={state.setRange} />
@@ -94,6 +96,31 @@ export function App() {
         />
       )}
     </div>
+  )
+}
+
+/** Per site, since a wiki or reference site rarely needs the model reading it. */
+function AiSwitch({ site }: { site: Site }) {
+  const queryClient = useQueryClient()
+  const change = useMutation({
+    mutationFn: (ai: boolean) => api.setAi(site.id, ai),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Site[]>(['sites'], (all) =>
+        all?.map((s) => (s.id === updated.id ? updated : s)),
+      )
+      for (const key of ['reading', 'replays', 'replayDigest'])
+        queryClient.invalidateQueries({ queryKey: [key] })
+    },
+  })
+  return (
+    <span title="The reading, replay summaries and the patterns across them. Off means no model calls for this site.">
+      <Switch
+        label="AI analysis"
+        checked={change.isPending ? (change.variables ?? site.ai) : site.ai}
+        disabled={change.isPending}
+        onChange={(ai) => change.mutate(ai)}
+      />
+    </span>
   )
 }
 
@@ -178,7 +205,7 @@ function Dashboard({
           <ReadingPanel scope={scope} onShow={onShow} />
         </div>
       </div>
-      <SessionsPanel scope={scope} timezone={site.timezone} />
+      {site.ai && <SessionsPanel scope={scope} timezone={site.timezone} />}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
         <BreakdownPanel
           title="Acquisition"

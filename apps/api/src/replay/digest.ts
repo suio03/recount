@@ -25,8 +25,8 @@ export interface DigestResponse {
   digest: Digest | null
   /** Summarized sessions the digest reads. */
   sessions: number
-  /** Why there is no digest: too few sessions to compare, no key, or a failed call. */
-  status: 'ok' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  /** Why there is no digest: AI off, too few sessions to compare, no key, or a failed call. */
+  status: 'ok' | 'off' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
   error?: string
   generatedAt?: string
 }
@@ -43,6 +43,7 @@ const inFlight = new Map<string, Promise<DigestResponse>>()
  */
 export async function digestFor(scope: Scope, { refresh = false } = {}): Promise<DigestResponse> {
   const { sessions } = await replaysFor(scope)
+  if (!scope.site.ai) return { digest: null, sessions: sessions.length, status: 'off' }
   if (sessions.length < MIN_SESSIONS)
     return { digest: null, sessions: sessions.length, status: 'too_few' }
   if (!env.ANTHROPIC_API_KEY)

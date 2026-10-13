@@ -1,4 +1,5 @@
 import {
+  boolean,
   customType,
   date,
   integer,
@@ -20,6 +21,8 @@ export const sites = pgTable('sites', {
   name: text('name').notNull(),
   timezone: text('timezone').notNull().default('UTC'),
   currency: text('currency').notNull().default('USD'),
+  /** Whether the model reads this site: the dashboard reading and replay summaries. */
+  ai: boolean('ai').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
