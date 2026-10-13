@@ -1,0 +1,119 @@
+@import "tailwindcss";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/source-serif-4";
+
+/*
+ * Recount design tokens. Values mirror the design system's tokens.json; series colors use the
+ * Petrol + Plum palette chosen 2026-10-13. Tailwind's default palette is removed so only these
+ * colors exist in the app.
+ */
+:root {
+  color-scheme: light;
+  --canvas: #f4f5f7;
+  --surface: #ffffff;
+  --surface-sunken: #eceef2;
+  --line: #e2e5ea;
+  --line-strong: #7f8794;
+  --ink: #14171c;
+  --ink-muted: #59616d;
+  --on-ink: #ffffff;
+  --visitors: #0b6e86;
+  --visitors-soft: #dcecf0;
+  --revenue: #8a3f8f;
+  --revenue-soft: #f1e2f2;
+  --marker: #fff0a3;
+  --up: #16784a;
+  --down: #c02a3a;
+  --shadow-pop: 0 2px 6px #14171c14, 0 12px 32px -4px #14171c29;
+  --focus-gap: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --canvas: #0d0f12;
+    --surface: #15181d;
+    --surface-sunken: #1d2128;
+    --line: #262b33;
+    --line-strong: #68707d;
+    --ink: #eceef2;
+    --ink-muted: #9aa2ae;
+    --on-ink: #0d0f12;
+    --visitors: #5cc3d9;
+    --visitors-soft: #123139;
+    --revenue: #d58ad9;
+    --revenue-soft: #34193a;
+    --marker: #3d3410;
+    --up: #52c98f;
+    --down: #ff7d88;
+    --shadow-pop: 0 12px 32px -4px #000000cc;
+    --focus-gap: #15181d;
+  }
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--ink-muted);
+  --color-on-ink: var(--on-ink);
+  --color-visitors: var(--visitors);
+  --color-visitors-soft: var(--visitors-soft);
+  --color-revenue: var(--revenue);
+  --color-revenue-soft: var(--revenue-soft);
+  --color-marker: var(--marker);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, Menlo, monospace;
+  --font-serif: "Source Serif 4 Variable", "Iowan Old Style", Georgia, serif;
+
+  --text-title: 20px;
+  --text-title--line-height: 28px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-kpi: 28px;
+  --text-kpi--line-height: 32px;
+  --text-kpi--letter-spacing: -0.02em;
+  --text-path: 13px;
+  --text-path--line-height: 20px;
+  --text-tick: 11px;
+  --text-tick--line-height: 14px;
+  --text-note: 15px;
+  --text-note--line-height: 23px;
+  --text-lead: 18px;
+  --text-lead--line-height: 26px;
+
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  --shadow-pop: var(--shadow-pop);
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+  }
+  :focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--focus-gap),
+      0 0 0 4px var(--visitors);
+  }
+}

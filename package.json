@@ -1,0 +1,27 @@
+{
+  "name": "recount",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.6.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @recount/api --filter @recount/web --filter @recount/tracker dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "db:up": "docker compose -f infra/docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f infra/docker-compose.dev.yml down",
+    "migrate": "pnpm --filter @recount/api migrate",
+    "seed": "pnpm --filter @recount/api seed"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  }
+}
