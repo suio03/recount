@@ -1,7 +1,7 @@
 # One image: the API, which also serves the built dashboard and tracker. Configuration and
 # secrets come from the environment at run time; nothing secret is built in.
 
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 RUN corepack enable
 WORKDIR /src
 COPY . .
@@ -15,7 +15,7 @@ RUN pnpm --filter @recount/tracker build \
  && cp -r packages/tracker/dist /out/public/js \
  && cp -r apps/web/dist /out/public/web
 
-FROM node:24-alpine
+FROM node:26-alpine
 ENV NODE_ENV=production \
     PORT=8787 \
     TRACKER_DIST=/app/public/js \
