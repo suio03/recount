@@ -84,25 +84,25 @@ Done:
    cross-session patterns.
 6. **Shipping**: single-container image, CI publishing to GHCR and deploying through a Dokploy
    webhook, body limits and sign-in rate limits.
+7. **First deploy**: Recount, PostgreSQL 17 and ClickHouse 25.8 on Dokploy; sites switched over
+   from Plausible.
+8. **Data migration**: history imported from the Plausible fork, one month at a time. Imported
+   history is cookieless (daily hashes).
 
 Next:
 
-1. **First deploy**: Recount, PostgreSQL 17 and ClickHouse 25.8 on Dokploy; switch the first
-   sites' tracker over from Plausible.
-2. **Data migration**: import `events_v2`/`sessions_v2` and the payment ledger from the Plausible
-   fork. Imported history is cookieless (daily hashes).
-3. **Accounts and teams**: users, orgs, roles, invites, API keys; private API scoped by org.
-4. **Site management in the dashboard**: add and delete sites, install snippet and a
+1. **Accounts and teams**: users, orgs, roles, invites, API keys; private API scoped by org.
+2. **Site management in the dashboard**: add and delete sites, install snippet and a
    first-event check, site settings, replay and AI options, revenue connection with encrypted
    keys, public dashboard links.
-5. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
-6. **Hosted service**: sign-up, plans and Paddle billing, limits, account deletion, landing page,
+3. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
+4. **Hosted service**: sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-7. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
-8. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-9. **Attribution**: first touch next to last non-direct touch; Creem sync.
-10. **Questions and digests**: MCP server for asking about the data, periodic email digests.
-11. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+5. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
+6. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+7. **Attribution**: first touch next to last non-direct touch; Creem sync.
+8. **Questions and digests**: MCP server for asking about the data, periodic email digests.
+9. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
 
 ## Known gaps in the skeleton
 
@@ -110,6 +110,6 @@ Next:
   region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
 - One secret (`ADMIN_TOKEN`) guards the private API: scripts send it as a bearer token, and the
-  dashboard trades it for a session cookie. There are no user accounts yet (roadmap item 3).
+  dashboard trades it for a session cookie. There are no user accounts yet (roadmap item 1).
 - Sign-in rate limits live in process memory, which is enough for one instance.
 - SPA pageviews fire on `pushState` before the new page sets its title.
