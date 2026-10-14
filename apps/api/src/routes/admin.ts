@@ -17,7 +17,7 @@ import { type Role, type Site, sites } from '../db/schema'
 import { normalizeDomain, validTimezone } from '../domain'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
-import { rows } from '../stats/queries'
+import { currentVisitors, rows } from '../stats/queries'
 import { funnelRoutes, goalRoutes } from './goals'
 import { revenueRoutes } from './revenue'
 import { statsRoutes } from './stats'
@@ -187,6 +187,11 @@ adminRoutes.delete('/api/sites/:id', async (c) => {
     })
   return c.json({ ok: true })
 })
+
+/** Visitors on the site in the last few minutes, for the live count beside its name. */
+adminRoutes.get('/api/sites/:id/current', async (c) =>
+  c.json({ visitors: await currentVisitors(c.get('site')) }),
+)
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)
 adminRoutes.route('/api/sites/:id/revenue', revenueRoutes)

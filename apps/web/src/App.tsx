@@ -29,6 +29,8 @@ import { Switch } from './ui/Switch'
 
 /** The realtime view refetches this often. */
 const REALTIME_REFRESH_MS = 30_000
+/** The live count beside the site's name refetches this often. */
+const CURRENT_REFRESH_MS = 30_000
 
 type View = 'dashboard' | 'settings' | 'site' | 'new-site'
 const VIEWS: View[] = ['dashboard', 'settings', 'site', 'new-site']
@@ -141,6 +143,15 @@ function SignedIn({ me }: { me: Me }) {
                   current={site}
                   onChange={state.setDomain}
                   onAdd={canAdd ? () => state.setView('new-site') : undefined}
+                />
+              )}
+              {site && (
+                <CurrentVisitors
+                  site={{ siteId: site.id }}
+                  onOpen={() => {
+                    state.setView('dashboard')
+                    state.setPeriod({ preset: 'realtime' })
+                  }}
                 />
               )}
               {site && site.role !== 'viewer' && <AiSwitch site={site} />}
@@ -273,6 +284,10 @@ function Shared({ token }: { token: string }) {
       <AppHeader>
         <div className="flex flex-wrap items-center gap-4">
           <span className="text-title font-semibold tracking-[-0.01em]">{domain}</span>
+          <CurrentVisitors
+            site={{ share: token }}
+            onOpen={() => state.setPeriod({ preset: 'realtime' })}
+          />
           <span className="text-label text-muted">Shared dashboard</span>
         </div>
         <PeriodPicker
@@ -411,6 +426,42 @@ function SitePicker({
         strokeWidth={1.75}
       />
     </label>
+  )
+}
+
+/**
+ * How many visitors had an event in the last five minutes, refetched while the tab is open.
+ * Opens the realtime view, which shows what they are doing.
+ */
+function CurrentVisitors({
+  site,
+  onOpen,
+}: {
+  site: { siteId: string } | { share: string }
+  onOpen: () => void
+}) {
+  const current = useQuery({
+    queryKey: ['current', site],
+    queryFn: () => api.current(site),
+    refetchInterval: CURRENT_REFRESH_MS,
+  })
+  if (!current.data) return null
+  const n = current.data.visitors
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Visitors in the last 5 minutes. Open the realtime view"
+      className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 text-label font-medium text-muted tabular-nums hover:bg-sunken hover:text-ink"
+    >
+      <span className="relative flex size-2" aria-hidden="true">
+        {n > 0 && (
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-up opacity-60 motion-reduce:hidden" />
+        )}
+        <span className="relative inline-flex size-2 rounded-full bg-up" />
+      </span>
+      {n.toLocaleString()} current {n === 1 ? 'visitor' : 'visitors'}
+    </button>
   )
 }
 

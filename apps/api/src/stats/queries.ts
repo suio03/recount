@@ -68,6 +68,20 @@ export async function rows<T>(query: string, params: Record<string, unknown>): P
   return result.json<T>()
 }
 
+/** How far back a visitor counts as on the site now. */
+export const CURRENT_MINUTES = 5
+
+/** Visitors with any event in the last few minutes, regardless of filters and range. */
+export async function currentVisitors(site: Pick<Site, 'id'>): Promise<number> {
+  const [row] = await rows<{ visitors: number }>(
+    `SELECT uniqExact(visitor_id) AS visitors FROM events
+     WHERE site_id = {site:UUID} AND timestamp >= now() - INTERVAL {minutes:UInt8} MINUTE
+       AND timestamp <= now()`,
+    { site: site.id, minutes: CURRENT_MINUTES },
+  )
+  return Number(row?.visitors ?? 0)
+}
+
 export interface Totals {
   visitors: number
   sessions: number

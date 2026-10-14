@@ -409,6 +409,13 @@ export const api = {
       if (!res.ok) throw await failure(res)
       return res.json() as Promise<Site>
     }),
+  /** Visitors in the last few minutes, by site id or a public link's token. */
+  current: (site: { siteId: string } | { share: string }) =>
+    get<{ visitors: number }>(
+      'share' in site
+        ? `/api/share/${encodeURIComponent(site.share)}/current`
+        : `/api/sites/${site.siteId}/current`,
+    ),
   sharedSite: (token: string) => get<SharedSite>(`/api/share/${encodeURIComponent(token)}/site`),
   revenueSources: (siteId: string) => get<RevenueSources>(`/api/sites/${siteId}/revenue`),
   connectRevenue: (siteId: string, input: { key: string; match: Record<string, string> }) =>

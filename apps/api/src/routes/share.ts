@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/postgres'
 import { type Site, sites } from '../db/schema'
-import { rows } from '../stats/queries'
+import { currentVisitors, rows } from '../stats/queries'
 import { statsRoutes } from './stats'
 
 /**
@@ -32,6 +32,10 @@ shareRoutes.get('/api/share/:token/site', async (c) => {
   )
   return c.json({ domain, name, timezone, currency, firstEvent: first?.first ?? null })
 })
+
+shareRoutes.get('/api/share/:token/current', async (c) =>
+  c.json({ visitors: await currentVisitors(c.get('site')) }),
+)
 
 shareRoutes.use('/api/share/:token/stats/:part', async (c, next) => {
   if (!SHARED.has(c.req.param('part') ?? '')) return c.json({ error: 'not found' }, 404)
