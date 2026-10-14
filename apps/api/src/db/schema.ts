@@ -115,7 +115,11 @@ export const revenueSources = pgTable('revenue_sources', {
     .notNull()
     .references(() => sites.id, { onDelete: 'cascade' }),
   provider: text('provider').$type<'paddle' | 'stripe'>().notNull(),
-  keyEnv: text('key_env').notNull(),
+  /** The variable holding the key, for sources set up with the CLI. */
+  keyEnv: text('key_env'),
+  /** The key itself, sealed, for sources connected in the dashboard. */
+  keyCipher: bytea('key_cipher'),
+  keyHint: text('key_hint'),
   match: jsonb('match').$type<Record<string, string>>().notNull().default({}),
   syncedAt: timestamp('synced_at', { withTimezone: true }),
   lastError: text('last_error'),

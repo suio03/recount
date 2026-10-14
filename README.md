@@ -73,6 +73,7 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 |---|---|---|
 | `DATABASE_URL`, `CLICKHOUSE_*` | see `.env.example` | Database connections |
 | `PUBLIC_URL` | `http://localhost:8787` | Where the API is reached; the dev dashboard proxies to it |
+| `ENCRYPTION_KEY` | unset | Encrypts payment provider keys entered in the dashboard. Any random string of 32+ characters, e.g. `openssl rand -base64 32`. Changing it makes stored keys unreadable |
 | `ANTHROPIC_API_KEY` | unset | Enables AI analysis. Without it, AI-enabled sites show only the detected changes |
 | `READING_MODEL` | `claude-sonnet-5-5` | Model for readings and cross-session patterns |
 | `REPLAY_MODEL` | `claude-haiku-5-5` | Model for single-session summaries |
@@ -135,16 +136,18 @@ and markup can add meaning:
 
 ### Revenue
 
-Put `recount.ids()` in the checkout's custom data (Paddle `customData`), then connect the account
-whose API key is in an environment variable:
+Put `recount.ids()` in the checkout's custom data (Paddle `customData`), then connect the Paddle
+account under **Site settings → Revenue** with an API key that has `transaction.read` and
+`adjustment.read`. The key is checked with Paddle and stored encrypted with `ENCRYPTION_KEY`;
+payments sync every 15 minutes. An optional custom-data filter (`project=example`) keeps only the
+transactions of one product, for an account shared by several.
+
+A key can also stay in an environment variable, connected from the command line:
 
 ```sh
 pnpm --filter @recount/api revenue connect example.com paddle PADDLE_API_KEY [key=value ...]
 pnpm --filter @recount/api revenue sync
 ```
-
-The optional `key=value` pairs keep only transactions whose custom data matches, for an account
-shared by several products.
 
 ### Replay
 

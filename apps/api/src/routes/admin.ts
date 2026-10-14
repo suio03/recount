@@ -10,6 +10,7 @@ import { normalizeDomain, validTimezone } from '../domain'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
 import { rows } from '../stats/queries'
+import { revenueRoutes } from './revenue'
 import { statsRoutes } from './stats'
 
 export type SiteEnv = AuthEnv & { Variables: { site: Site; role: Role } }
@@ -156,6 +157,7 @@ adminRoutes.delete('/api/sites/:id', async (c) => {
 })
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)
+adminRoutes.route('/api/sites/:id/revenue', revenueRoutes)
 
 /** A session's recording, for the replay player. Offsets count from its first event. */
 adminRoutes.get('/api/sites/:id/replays/:session', async (c) => {

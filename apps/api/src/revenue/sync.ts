@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db/postgres'
 import { type RevenueSource, revenueSources, sites } from '../db/schema'
 import { hash64 } from '../ingest/identity'
+import { unseal } from '../secrets'
 import { rows } from '../stats/queries'
 import { fetchPaddle, toPayments } from './paddle'
 import { recordPayments } from './record'
@@ -18,14 +19,21 @@ async function knownPayments(siteId: string, provider: string) {
   return new Set(found.map((r) => r.payment_id))
 }
 
+/** The provider key: sealed in the row when connected in the dashboard, else in the environment. */
+function keyOf(source: RevenueSource) {
+  if (source.keyCipher) return unseal(source.keyCipher)
+  const key = source.keyEnv && process.env[source.keyEnv]
+  if (!key) throw new Error(`${source.keyEnv} is not set`)
+  return key
+}
+
 /** Pulls one source's new payments and records them. Returns how many were recorded. */
 export async function syncSource(source: RevenueSource) {
   const startedAt = new Date()
   try {
     const site = await db.query.sites.findFirst({ where: eq(sites.id, source.siteId) })
     if (!site) throw new Error('site not found')
-    const key = process.env[source.keyEnv]
-    if (!key) throw new Error(`${source.keyEnv} is not set`)
+    const key = keyOf(source)
     if (source.provider !== 'paddle') throw new Error(`${source.provider} is not supported yet`)
 
     const since = source.syncedAt && new Date(source.syncedAt.getTime() - OVERLAP_MS)

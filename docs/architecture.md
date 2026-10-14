@@ -51,8 +51,8 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 - API keys (`rc_...`) act as an admin of their org; scripts use them. There is no server-wide
   secret: the first account is created in the dashboard with a one-time setup code printed in
   the server log, so a stranger cannot claim a fresh install.
-- Third-party secrets (Paddle and Creem keys) are entered in the dashboard and stored encrypted
-  with a key from the environment, instead of naming an environment variable per source.
+- Third-party secrets (Paddle keys, later Creem) are entered in the dashboard and stored sealed
+  with AES-256-GCM under `ENCRYPTION_KEY`, instead of naming an environment variable per source.
 - A site can have a public read-only dashboard link.
 
 ## Hosted service
@@ -97,9 +97,9 @@ Done:
 
 Next:
 
-1. **Site management in the dashboard**: revenue connection with encrypted keys, public
-   dashboard links. (Adding and deleting sites, the install snippet with a first-event check,
-   and site settings are done.)
+1. **Site management in the dashboard**: public dashboard links. (Adding and deleting sites,
+   the install snippet with a first-event check, site settings and connecting Paddle with an
+   encrypted key are done.)
 2. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
 3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.

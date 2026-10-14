@@ -16,6 +16,11 @@ const Env = z.object({
   REPLAY_SUMMARIES_PER_DAY: z.coerce.number().int().min(0).default(50),
   /** Read the visitor's address and country from Cloudflare's headers. Only behind Cloudflare. */
   TRUST_CF_HEADERS: z.stringbool().default(false),
+  /**
+   * Encrypts secrets stored in the database, such as payment provider keys entered in the
+   * dashboard. Any long random string; changing it makes the stored keys unreadable.
+   */
+  ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY needs at least 32 characters').optional(),
   /** Directory holding the built tracker, served at /js/script.js. */
   TRACKER_DIST: z
     .string()

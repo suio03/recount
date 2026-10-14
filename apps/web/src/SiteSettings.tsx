@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, Globe, LoaderCircle } from 'lucide-react'
+import { CircleCheck, CreditCard, Globe, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { api, type Me, type Site, type SiteChange } from './api'
+import { api, type Me, type RevenueSource, type Site, type SiteChange } from './api'
 import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
 import { Panel } from './ui/Panel'
 import { SegmentedControl } from './ui/SegmentedControl'
@@ -119,6 +119,7 @@ export function SiteSettings({ site, onDeleted }: { site: Site; onDeleted: () =>
     <div className="grid max-w-3xl gap-3">
       <Install site={site} />
       <General key={site.id} site={site} />
+      <Revenue key={`revenue-${site.id}`} site={site} />
       <DeleteSite site={site} onDeleted={onDeleted} />
     </div>
   )
@@ -303,5 +304,203 @@ function DeleteSite({ site, onDeleted }: { site: Site; onDeleted: () => void }) 
       </div>
       {remove.isError && <ErrorText>{errorOf(remove.error)}</ErrorText>}
     </Panel>
+  )
+}
+
+const ago = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+/** `project=scribix, plan=pro` as custom data to match, or an error. */
+function parseMatch(text: string): Record<string, string> | string {
+  const match: Record<string, string> = {}
+  for (const pair of text.split(',').map((p) => p.trim())) {
+    if (!pair) continue
+    const at = pair.indexOf('=')
+    if (at < 1) return `Write each filter as key=value, not "${pair}"`
+    match[pair.slice(0, at).trim()] = pair.slice(at + 1).trim()
+  }
+  return match
+}
+
+/** Connects Paddle with an API key, which the server checks and stores encrypted. */
+function Revenue({ site }: { site: Site }) {
+  const queryClient = useQueryClient()
+  const key = ['revenue', site.id]
+  const sources = useQuery({
+    queryKey: key,
+    queryFn: () => api.revenueSources(site.id),
+    // A sync runs in the background; keep asking until it is done.
+    refetchInterval: (q) => (q.state.data?.sources.some((s) => s.syncing) ? 2000 : false),
+  })
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: key })
+    // Newly synced payments change the revenue on the dashboard.
+    queryClient.invalidateQueries({ queryKey: ['main'] })
+  }
+  const [apiKey, setApiKey] = useState('')
+  const [filter, setFilter] = useState('')
+  const match = parseMatch(filter)
+  const connect = useMutation({
+    mutationFn: () =>
+      api.connectRevenue(site.id, { key: apiKey, match: match as Record<string, string> }),
+    onSuccess: () => {
+      setApiKey('')
+      setFilter('')
+      refresh()
+    },
+  })
+  const sync = useMutation({
+    mutationFn: (id: string) => api.syncRevenue(site.id, id),
+    onSuccess: refresh,
+  })
+  const disconnect = useMutation({
+    mutationFn: (id: string) => api.disconnectRevenue(site.id, id),
+    onSuccess: refresh,
+  })
+  const list = sources.data?.sources ?? []
+  const stored = list.find((s) => s.keyHint !== null)
+  return (
+    <Panel title="Revenue">
+      <p className="m-0 text-body text-muted">
+        Payments from Paddle are synced every 15 minutes and credited to the visitor who paid. Put{' '}
+        <code className="font-mono text-path">recount.ids()</code> in the checkout&apos;s{' '}
+        <code className="font-mono text-path">customData</code> so each payment finds its visitor.
+      </p>
+      {sources.isError && <ErrorText>{errorOf(sources.error)}</ErrorText>}
+      {list.length > 0 && (
+        <ul className="m-0 grid list-none p-0">
+          {list.map((s) => (
+            <SourceRow
+              key={s.id}
+              source={s}
+              busy={sync.isPending || disconnect.isPending}
+              onSync={() => sync.mutate(s.id)}
+              onDisconnect={() => disconnect.mutate(s.id)}
+            />
+          ))}
+        </ul>
+      )}
+      {(sync.isError || disconnect.isError) && (
+        <ErrorText>{errorOf(sync.error ?? disconnect.error)}</ErrorText>
+      )}
+      {sources.data && !sources.data.canStoreKeys ? (
+        <p className="m-0 text-label text-muted">
+          To connect a provider here, set <code className="font-mono">ENCRYPTION_KEY</code> on the
+          server to a long random string; keys are stored encrypted with it.
+        </p>
+      ) : (
+        <form
+          className="grid gap-3 border-line border-t pt-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            connect.mutate()
+          }}
+        >
+          <Field
+            label={stored ? 'Replace the Paddle API key' : 'Paddle API key'}
+            type="password"
+            autoComplete="off"
+            required
+            placeholder="pdl_live_apikey_…"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            hint="Create one in Paddle under Developer tools → Authentication with transaction.read and adjustment.read. Sandbox keys work too."
+          />
+          <Field
+            label="Only transactions whose custom data has (optional)"
+            placeholder="project=example"
+            value={filter}
+            aria-invalid={typeof match === 'string'}
+            onChange={(e) => setFilter(e.target.value)}
+            hint="For a Paddle account that bills several products. Separate several with commas."
+          />
+          {typeof match === 'string' && <ErrorText>{match}</ErrorText>}
+          {connect.isError && <ErrorText>{errorOf(connect.error)}</ErrorText>}
+          <div>
+            <Button
+              type="submit"
+              disabled={connect.isPending || !apiKey.trim() || typeof match === 'string'}
+              className="inline-flex items-center gap-1.5"
+            >
+              <CreditCard className="size-4" strokeWidth={1.75} aria-hidden="true" />
+              {connect.isPending ? 'Checking the key…' : stored ? 'Replace key' : 'Connect Paddle'}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Panel>
+  )
+}
+
+function SourceRow({
+  source,
+  busy,
+  onSync,
+  onDisconnect,
+}: {
+  source: RevenueSource
+  busy: boolean
+  onSync: () => void
+  onDisconnect: () => void
+}) {
+  const filters = Object.entries(source.match)
+  return (
+    <li className="grid gap-1 border-line border-t py-2 first:border-t-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block text-body font-medium">
+            Paddle{' '}
+            <span className="font-normal text-muted">
+              {source.keyHint ? (
+                <>
+                  key ending <code className="font-mono">{source.keyHint}</code>
+                </>
+              ) : (
+                <>
+                  key in <code className="font-mono">{source.keyEnv}</code>
+                </>
+              )}
+              {filters.length > 0 && ` · only ${filters.map(([k, v]) => `${k}=${v}`).join(', ')}`}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5 text-label text-muted">
+            {source.syncing ? (
+              <>
+                <LoaderCircle
+                  className="size-3.5 animate-spin"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                Syncing{source.syncedAt ? '' : ' the whole history, which can take a few minutes'}…
+              </>
+            ) : source.syncedAt ? (
+              `Synced ${ago(source.syncedAt)}`
+            ) : (
+              'Not synced yet'
+            )}
+          </span>
+        </span>
+        <span className="flex items-center gap-2">
+          <Button
+            variant="quiet"
+            className="inline-flex h-8 items-center gap-1.5"
+            disabled={busy || source.syncing}
+            onClick={onSync}
+          >
+            <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+            Sync now
+          </Button>
+          <ConfirmButton
+            label="Disconnect"
+            confirm="Confirm disconnect"
+            disabled={busy}
+            onConfirm={onDisconnect}
+          />
+        </span>
+      </div>
+      {source.lastError && (
+        <p className="m-0 whitespace-pre-line text-label text-down">{source.lastError}</p>
+      )}
+    </li>
   )
 }

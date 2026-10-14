@@ -63,6 +63,26 @@ export interface Site {
   firstEvent: string | null
 }
 
+/** Where a site's payments come from. */
+export interface RevenueSource {
+  id: string
+  provider: 'paddle'
+  /** The environment variable holding the key, for sources set up with the CLI. */
+  keyEnv: string | null
+  /** The last characters of a key entered in the dashboard. */
+  keyHint: string | null
+  match: Record<string, string>
+  syncedAt: string | null
+  lastError: string | null
+  syncing: boolean
+}
+
+export interface RevenueSources {
+  /** Whether the server can store keys, which needs ENCRYPTION_KEY. */
+  canStoreKeys: boolean
+  sources: RevenueSource[]
+}
+
 export type SiteChange = Partial<Pick<Site, 'name' | 'timezone' | 'currency' | 'ai'>>
 
 export interface DateRange {
@@ -300,6 +320,12 @@ export const api = {
   updateSite: (siteId: string, change: SiteChange) =>
     send<Site>('PATCH', `/api/sites/${siteId}`, change),
   deleteSite: (siteId: string) => del(`/api/sites/${siteId}`),
+  revenueSources: (siteId: string) => get<RevenueSources>(`/api/sites/${siteId}/revenue`),
+  connectRevenue: (siteId: string, input: { key: string; match: Record<string, string> }) =>
+    send<RevenueSource>('POST', `/api/sites/${siteId}/revenue`, { provider: 'paddle', ...input }),
+  syncRevenue: (siteId: string, id: string) =>
+    send<RevenueSource>('POST', `/api/sites/${siteId}/revenue/${id}/sync`, {}),
+  disconnectRevenue: (siteId: string, id: string) => del(`/api/sites/${siteId}/revenue/${id}`),
   me: () => get<Me>('/api/me'),
   setupNeeded: () => get<{ needed: boolean }>('/api/setup'),
   setup: (input: { setupCode: string; email: string; name: string; password: string }) =>
