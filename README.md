@@ -8,6 +8,13 @@ sessions, and finds what several visitors had in common. The model never produce
 counts everything, and the model only explains what the code found. Claims that quote a figure
 the data does not contain are dropped.
 
+Most analytics tools need a tracking plan first: decide what matters, add an event for each
+action, then define goals around them. Recount records behavior first and decides what it means
+later. The script alone captures pageviews and every click with its text, page section and link,
+so most goals and funnels are rules over data already recorded, and a rule defined today counts
+past visits too. Code is needed only for what a browser cannot see, such as a signup confirmed by
+the server, or for business details like the plan chosen.
+
 Status: in daily development, replacing a Plausible CE fork. See
 [docs/architecture.md](docs/architecture.md) for the design and roadmap.
 
@@ -69,6 +76,7 @@ pnpm dev                        # API :8787, web :5173
 ```
 
 Open the dashboard and create the owner account with the setup code the API prints at startup.
+To skip the sign-in from then on, put that account's email in `DEV_AUTO_LOGIN` in `.env`.
 
 Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
@@ -76,7 +84,6 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 | Variable | Default | What |
 |---|---|---|
-To skip the sign-in from then on, put that account's email in `DEV_AUTO_LOGIN` in `.env`.
 | `DATABASE_URL`, `CLICKHOUSE_*` | see `.env.example` | Database connections |
 | `PUBLIC_URL` | `http://localhost:8787` | Where the API is reached; the dev dashboard proxies to it |
 | `ENCRYPTION_KEY` | unset | Encrypts payment provider keys entered in the dashboard. Any random string of 32+ characters, e.g. `openssl rand -base64 32`. Changing it makes stored keys unreadable |
@@ -85,6 +92,7 @@ To skip the sign-in from then on, put that account's email in `DEV_AUTO_LOGIN` i
 | `REPLAY_MODEL` | `claude-haiku-5-5` | Model for single-session summaries |
 | `REPLAY_SUMMARIES_PER_DAY` | `50` | Session summaries per site per day (UTC); `0` turns the job off |
 | `AI_DAILY_BUDGET_USD` | `5` | What each team may spend on model calls per day (UTC). Past it, readings, summaries and patterns wait for the next day and cached ones stay; `0` stops all calls |
+| `DEV_AUTO_LOGIN` | unset | Development only: browsers on the same machine are signed in as this account without a password. Ignored when `NODE_ENV` is `production` (as in the image) and for requests from other machines. Signing out shows the sign-in form until the next sign-in |
 | `TRUST_CF_HEADERS` | `false` | Take the visitor's address and country from Cloudflare's headers. Set it only when Cloudflare proxies every request; otherwise the address comes from `X-Forwarded-For` and there is no country |
 
 ## Adding a site
@@ -92,7 +100,6 @@ To skip the sign-in from then on, put that account's email in `DEV_AUTO_LOGIN` i
 In the dashboard, pick **Add a site…** in the site menu (with no sites yet, the form is shown
 straight away). The site's settings then show the script tag to paste, built from the options
 below, and say when the first pageview arrives. **Site settings** also changes the name,
-| `DEV_AUTO_LOGIN` | unset | Development only: browsers on the same machine are signed in as this account without a password. Ignored when `NODE_ENV` is `production` (as in the image) and for requests from other machines. Signing out shows the sign-in form until the next sign-in |
 timezone and currency, and deletes a site with everything recorded for it. **Public link**
 there gives a read-only dashboard anyone can open without signing in, at `/share/<token>`; it
 shows the numbers, revenue included, but not the AI reading or recordings. A new link stops the

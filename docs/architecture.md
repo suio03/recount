@@ -11,9 +11,20 @@ replaces (`../analytics`), whose data will be migrated.
    in digests, not on a separate page.
 2. **Numbers come from the database, never from the model.** The AI layer calls query tools and
    cites the queries behind every claim. Deterministic jobs detect changes first; AI explains them.
-3. **Semantics from day one.** Events carry page type, element text and section; each site has an
-   event catalog and metric definitions in `sites/`. Data recorded without meaning cannot get it
-   back later.
+3. **Record behavior first, decide its meaning later** (decided 2026-10-14). Plausible-style tools
+   start from a tracking plan: an event added by hand for each action, then goals defined around
+   them. Recount captures pageviews and every click with page type, element text, section and
+   link, so goals, funnels and metrics are rules applied when stats are read, and a definition
+   made today counts past visits too. Code is asked for only where the browser cannot see the
+   outcome (a signup confirmed by the server, a payment without a connected provider) or for
+   business properties (plan, amount). The aim is that people rarely define anything by hand:
+   the AI layer drafts what conversion means for a site from its data, code checks every draft
+   against real counts, and people correct it where they disagree. Each site's event catalog and
+   metric definitions in `sites/` add meaning code alone cannot infer.
+
+   The cost: rules over element text can break when a page changes its copy, so match counts are
+   watched; capturing every click means more events to store; and the masking rules (typed values
+   never sent, `data-rc-mask`, masked replay copy, query strings stripped) carry more weight.
 4. **One codebase, two ways to run it** (decided 2026-10-14, the Plausible model). Anyone can
    self-host the open-source image; people who would rather not run servers use the hosted
    service. Both run the same code: accounts, teams and per-site roles exist in both, and the
@@ -107,12 +118,30 @@ Done:
 
 Next:
 
-1. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
+1. **Semantics drafted by AI, answers to common questions**: on a schedule each site picks (daily
+   or weekly), code lists what the site's data holds (paths, page types, clicked elements by
+   section, outbound domains, custom events) and the model drafts what conversion and the key
+   paths are, as goals and funnels with the evidence behind each. Code drops drafts that match
+   nothing; the rest apply on their own or wait for approval, per site, never overwriting what a
+   person edited or removed. Semantics move from `sites/` into PostgreSQL, with `sites/` kept as
+   overrides. Built-in questions (how is traffic, how is conversion, which channel brings the
+   best visitors) are fixed queries the model explains, stating the definition used. Data the
+   browser cannot see becomes a tracking gap: what is missing, why, and the line of code to add.
+2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
+   AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
+   through the id passed from the browser, as with `recount.ids()`; an MCP server with
+   `get_install`, `get_tracking_rules`, `list_tracking_gaps`, `define_event`, `verify_event` and
+   the question tools, so an agent implements a gap, checks the event arrives and registers its
+   meaning. Its keys read data and write definitions only, and the server rejects properties
+   that look like personal data.
+3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-2. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-3. **Attribution**: first touch next to last non-direct touch; Creem sync.
-4. **Questions and digests**: MCP server for asking about the data, periodic email digests.
-5. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+4. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+5. **Attribution**: first touch next to last non-direct touch; Creem sync.
+6. **Digests**: periodic email digests.
+7. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+8. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
+   conversion with confidence intervals, explained by the model.
 
 ## Known gaps in the skeleton
 
