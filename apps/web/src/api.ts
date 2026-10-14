@@ -295,7 +295,7 @@ export const api = {
   setAi: (siteId: string, ai: boolean) => send<Site>('PATCH', `/api/sites/${siteId}`, { ai }),
   me: () => get<Me>('/api/me'),
   setupNeeded: () => get<{ needed: boolean }>('/api/setup'),
-  setup: (input: { adminToken: string; email: string; name: string; password: string }) =>
+  setup: (input: { setupCode: string; email: string; name: string; password: string }) =>
     send<User>('POST', '/api/setup', input),
   signIn: (input: { email: string; password: string }) => send<User>('POST', '/api/login', input),
   signOut: () => send<{ ok: true }>('POST', '/api/logout', {}),

@@ -7,11 +7,6 @@ const Env = z.object({
   CLICKHOUSE_USER: z.string().default('default'),
   CLICKHOUSE_PASSWORD: z.string().default(''),
   CLICKHOUSE_DATABASE: z.string().default('recount'),
-  /**
-   * Proves ownership when the first account is created, and is a bearer token for scripts that
-   * may do anything, until they move to API keys.
-   */
-  ADMIN_TOKEN: z.string().min(24),
   /** Enables the AI reading. Without it the dashboard still shows the detected changes. */
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   READING_MODEL: z.string().default('claude-sonnet-5-5'),

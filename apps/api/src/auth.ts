@@ -5,19 +5,12 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { clientIp } from './client-ip'
 import { db } from './db/postgres'
 import { apiKeys, memberships, orgs, type Role, type User, userSessions, users } from './db/schema'
-import { env } from './env'
 
 /**
- * Who is calling the private API:
- * - a person, through the session cookie the dashboard gets at sign-in;
- * - a script with an org's API key (`Bearer rc_...`), acting as an admin of that org;
- * - a script with ADMIN_TOKEN, which may do anything. It stays while scripts move to API keys,
- *   and it proves ownership when the first account is created.
+ * Who is calling the private API: a person, through the session cookie the dashboard gets at
+ * sign-in, or a script with an org's API key (`Bearer rc_...`), acting as an admin of that org.
  */
-export type Principal =
-  | { kind: 'user'; user: User }
-  | { kind: 'key'; orgId: string }
-  | { kind: 'admin' }
+export type Principal = { kind: 'user'; user: User } | { kind: 'key'; orgId: string }
 
 export type AuthEnv = { Variables: { principal: Principal } }
 
@@ -35,9 +28,8 @@ function same(a: string, b: string) {
 }
 
 /**
- * Wrong passwords and tokens are capped per address, and across all addresses, since anyone who
- * can reach the server directly can claim any address. An open-source install may run with a
- * weak ADMIN_TOKEN, and people pick weak passwords.
+ * Wrong passwords and setup codes are capped per address, and across all addresses, since anyone
+ * who can reach the server directly can claim any address. People pick weak passwords.
  */
 const WINDOW_MS = 15 * 60_000
 const PER_ADDRESS = 20
@@ -67,12 +59,33 @@ export function fail(c: Context, now = Date.now()) {
   }
 }
 
+/**
+ * The one-time code that creates the first account. It is only ever printed in the server log,
+ * so whoever can read the log, which is whoever runs the server, claims a fresh install rather
+ * than whoever opens the dashboard first. It lives in memory: a restart prints a new one.
+ */
+let setupCode: string | undefined
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789'
+const normalize = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+/** The current setup code, made the first time it is needed; `fresh` says whether it is new. */
+export function currentSetupCode() {
+  if (setupCode) return { code: setupCode, fresh: false }
+  const chars = [...randomBytes(16)].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length])
+  setupCode = [0, 4, 8, 12].map((i) => chars.slice(i, i + 4).join('')).join('-')
+  return { code: setupCode, fresh: true }
+}
+
+export function clearSetupCode() {
+  setupCode = undefined
+}
+
 type Check = 'ok' | 'wrong' | 'blocked'
 
-/** Checks a secret against ADMIN_TOKEN, counting wrong ones; while blocked nothing is checked. */
-export function checkAdminToken(c: Context, secret: string): Check {
+/** Checks a guess at the setup code, counting wrong ones; while blocked nothing is checked. */
+export function checkSetupCode(c: Context, guess: string): Check {
   if (blocked(c)) return 'blocked'
-  if (same(secret, env.ADMIN_TOKEN)) return 'ok'
+  if (setupCode && same(normalize(guess), normalize(setupCode))) return 'ok'
   fail(c)
   return 'wrong'
 }
@@ -102,16 +115,9 @@ type Resolved = Principal | 'missing' | 'wrong' | 'blocked'
 async function resolve(c: Context): Promise<Resolved> {
   const header = c.req.header('Authorization')
   if (header?.startsWith('Bearer ')) {
+    // Keys are 32 random bytes, so they cannot be guessed and wrong ones are not counted.
     const secret = header.slice(7)
-    if (secret.startsWith(KEY_PREFIX)) {
-      const key = await fromKey(secret)
-      if (key) return key
-      // Keys are 32 random bytes, so they cannot be guessed and wrong ones are not counted,
-      // unless ADMIN_TOKEN predates keys and happens to share their prefix.
-      if (!env.ADMIN_TOKEN.startsWith(KEY_PREFIX)) return 'wrong'
-    }
-    const result = checkAdminToken(c, secret)
-    return result === 'ok' ? { kind: 'admin' } : result
+    return (secret.startsWith(KEY_PREFIX) && (await fromKey(secret))) || 'wrong'
   }
   const cookie = getCookie(c, COOKIE)
   if (cookie === undefined) return 'missing'
@@ -196,15 +202,12 @@ export async function orgsOf(principal: Principal) {
   const all = await db
     .select({ id: orgs.id, name: orgs.name })
     .from(orgs)
-    .where(principal.kind === 'key' ? eq(orgs.id, principal.orgId) : undefined)
-    .orderBy(orgs.createdAt)
-  const role: Role = principal.kind === 'key' ? 'admin' : 'owner'
-  return all.map((o) => ({ ...o, role }))
+    .where(eq(orgs.id, principal.orgId))
+  return all.map((o) => ({ ...o, role: 'admin' as Role }))
 }
 
 /** `principal`'s role in `orgId`, or undefined when it has none. */
 export async function roleIn(principal: Principal, orgId: string): Promise<Role | undefined> {
-  if (principal.kind === 'admin') return 'owner'
   if (principal.kind === 'key') return principal.orgId === orgId ? 'admin' : undefined
   const [row] = await db
     .select({ role: memberships.role })

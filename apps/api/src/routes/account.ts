@@ -5,7 +5,9 @@ import { z } from 'zod'
 import {
   type AuthEnv,
   blocked,
-  checkAdminToken,
+  checkSetupCode,
+  clearSetupCode,
+  currentSetupCode,
   endOtherSessions,
   endSession,
   fail,
@@ -50,30 +52,44 @@ const publicUser = (u: { id: string; email: string; name: string }) => ({
   name: u.name,
 })
 
+async function noUsers() {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(users)
+  return (row?.n ?? 0) === 0
+}
+
+/** Prints the setup code while the instance has no account, so its owner can claim it. */
+export async function announceSetup() {
+  if (!(await noUsers())) return
+  const { code, fresh } = currentSetupCode()
+  if (fresh)
+    console.log(`No accounts yet. Open the dashboard and create the owner with setup code ${code}`)
+}
+
 /** Whether the instance still needs its first account. */
 accountRoutes.get('/api/setup', async (c) => {
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(users)
-  return c.json({ needed: (row?.n ?? 0) === 0 })
+  const needed = await noUsers()
+  if (needed) await announceSetup()
+  return c.json({ needed })
 })
 
 const Setup = z.object({
-  adminToken: z.string().max(500),
+  setupCode: z.string().max(100),
   email: Email,
   name: Name,
   password: Password,
 })
 
 /**
- * Creates the first account, as owner. ADMIN_TOKEN proves the person owns the server, so a
- * stranger cannot claim a fresh install first. Sites from before accounts are in an org nobody
- * belongs to yet, which the owner takes over.
+ * Creates the first account, as owner. The setup code from the server log proves the person runs
+ * the server, so a stranger cannot claim a fresh install first. Sites from before accounts are
+ * in an org nobody belongs to yet, which the owner takes over.
  */
 accountRoutes.post('/api/setup', async (c) => {
   const input = await body(c, Setup)
   if (!input.ok) return input.error
-  const check = checkAdminToken(c, input.data.adminToken)
+  const check = checkSetupCode(c, input.data.setupCode)
   if (check === 'blocked') return c.json({ error: 'too many attempts' }, 429)
-  if (check === 'wrong') return c.json({ error: 'wrong admin token' }, 401)
+  if (check === 'wrong') return c.json({ error: 'wrong setup code' }, 401)
   const { email, name, password } = input.data
   const passwordHash = await hashPassword(password)
   const user = await db.transaction(async (tx) => {
@@ -103,6 +119,7 @@ accountRoutes.post('/api/setup', async (c) => {
     return created
   })
   if (!user) return c.json({ error: 'already set up' }, 409)
+  clearSetupCode()
   await startSession(c, user.id)
   return c.json(publicUser(user), 201)
 })

@@ -55,10 +55,10 @@ function Login() {
   )
 }
 
-/** The first account on an install. ADMIN_TOKEN proves the person runs this server. */
+/** The first account on an install. The setup code in the server log proves the person runs it. */
 function Setup() {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({ adminToken: '', name: '', email: '', password: '' })
+  const [form, setForm] = useState({ setupCode: '', name: '', email: '', password: '' })
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
   const setup = useMutation({
@@ -71,14 +71,15 @@ function Setup() {
         Create the owner account. Sites already on this server join your team.
       </p>
       <Field
-        label="Admin token"
-        type="password"
+        label="Setup code"
         autoComplete="off"
+        spellCheck={false}
         required
-        value={form.adminToken}
-        onChange={set('adminToken')}
-        className="font-mono"
-        hint="The ADMIN_TOKEN set on the server."
+        placeholder="XXXX-XXXX-XXXX-XXXX"
+        value={form.setupCode}
+        onChange={set('setupCode')}
+        className="font-mono uppercase"
+        hint="Printed in the server log at startup: “No accounts yet … setup code”."
       />
       <Field label="Name" required autoComplete="name" value={form.name} onChange={set('name')} />
       <Field

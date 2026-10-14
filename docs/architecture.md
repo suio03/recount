@@ -48,9 +48,9 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
   address checks. Until then invites are links to copy and resets go through the `user` CLI.
 - Every private API call is scoped to the caller's orgs. Events in ClickHouse are already keyed
   by site, so isolation is a check on site ownership, not a new storage layout.
-- API keys (`rc_...`) act as an admin of their org and replace `ADMIN_TOKEN` for scripts. The
-  first account is created in the dashboard and needs `ADMIN_TOKEN`, so a stranger cannot claim
-  a fresh install.
+- API keys (`rc_...`) act as an admin of their org; scripts use them. There is no server-wide
+  secret: the first account is created in the dashboard with a one-time setup code printed in
+  the server log, so a stranger cannot claim a fresh install.
 - Third-party secrets (Paddle and Creem keys) are entered in the dashboard and stored encrypted
   with a key from the environment, instead of naming an environment variable per source.
 - A site can have a public read-only dashboard link.
@@ -115,7 +115,6 @@ Next:
   region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
 - No email yet: invites are links to copy, and forgotten passwords are reset with the `user` CLI.
-- `ADMIN_TOKEN` still works as an all-access bearer token while scripts move to API keys.
 - Viewers can refresh the AI reading, which costs model calls (roadmap item 2 caps spend).
 - Sign-in rate limits live in process memory, which is enough for one instance.
 - SPA pageviews fire on `pushState` before the new page sets its title.

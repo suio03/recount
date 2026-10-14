@@ -1,14 +1,12 @@
 import { Hono } from 'hono'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-const TOKEN = 'a'.repeat(32)
 let auth: typeof import('./auth')
 let passwords: typeof import('./passwords')
 let app: Hono
 
 beforeAll(async () => {
   Object.assign(process.env, {
-    ADMIN_TOKEN: TOKEN,
     DATABASE_URL: 'postgres://unused',
     CLICKHOUSE_URL: 'http://unused',
   })
@@ -16,7 +14,7 @@ beforeAll(async () => {
   passwords = await import('./passwords')
   app = new Hono()
   app.post('/check', async (c) =>
-    c.json({ result: auth.checkAdminToken(c, (await c.req.json()).token) }),
+    c.json({ result: auth.checkSetupCode(c, (await c.req.json()).token) }),
   )
 })
 
@@ -56,12 +54,23 @@ describe('roles', () => {
   })
 })
 
-describe('admin token', () => {
-  it('blocks every address once too many wrong tokens arrive overall', async () => {
-    expect(await check(TOKEN, '10.0.0.1')).toEqual({ result: 'ok' })
-    for (let i = 0; i < 500; i++)
-      await check('wrong-token-guess-000000', `10.1.${i >> 8}.${i & 255}`)
-    expect(await check(TOKEN, '10.9.9.9')).toEqual({ result: 'blocked' })
+describe('setup code', () => {
+  it('keeps one code until it is used, and accepts it in any case or spacing', async () => {
+    const first = auth.currentSetupCode()
+    expect(first.fresh).toBe(true)
+    expect(first.code).toMatch(/^[A-Z2-9]{4}(-[A-Z2-9]{4}){3}$/)
+    expect(auth.currentSetupCode()).toEqual({ code: first.code, fresh: false })
+    const sloppy = first.code.toLowerCase().replaceAll('-', ' ')
+    expect(await check(sloppy, '10.0.0.1')).toEqual({ result: 'ok' })
+    auth.clearSetupCode()
+    expect(await check(first.code, '10.0.0.1')).toEqual({ result: 'wrong' })
+  })
+
+  it('blocks every address once too many wrong guesses arrive overall', async () => {
+    const { code } = auth.currentSetupCode()
+    expect(await check(code, '10.0.0.2')).toEqual({ result: 'ok' })
+    for (let i = 0; i < 500; i++) await check('WRONG-GUES-S000', `10.1.${i >> 8}.${i & 255}`)
+    expect(await check(code, '10.9.9.9')).toEqual({ result: 'blocked' })
   })
 
   it('makes API keys that are told apart by a short prefix', () => {

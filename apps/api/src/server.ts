@@ -6,9 +6,11 @@ import { pruneSalts } from './ingest/identity'
 import { extractEnded } from './replay/sessions'
 import { summarizeAll } from './replay/summarize'
 import { syncAll } from './revenue/sync'
+import { announceSetup } from './routes/account'
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`recount api listening on http://localhost:${info.port}`)
+  announceSetup().catch((e) => console.error('announceSetup', e))
 })
 
 // Hourly is enough: salts only need to disappear within a day of expiring, and expired sign-in
