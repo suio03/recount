@@ -6,6 +6,7 @@ import { requireAdmin, signIn, signOut } from '../auth'
 import { db } from '../db/postgres'
 import { sites } from '../db/schema'
 import { playable, recordingOf } from '../replay/sessions'
+import { rows } from '../stats/queries'
 import { statsRoutes } from './stats'
 
 export const adminRoutes = new Hono()
@@ -31,9 +32,20 @@ adminRoutes.post('/api/logout', (c) => {
   return c.json({ ok: true })
 })
 
-adminRoutes.get('/api/sites', async (c) =>
-  c.json(await db.select().from(sites).orderBy(sites.domain)),
-)
+/** Every site, with when its first event happened (null before any), for the "All time" range. */
+adminRoutes.get('/api/sites', async (c) => {
+  const [all, firsts] = await Promise.all([
+    db.select().from(sites).orderBy(sites.domain),
+    rows<{ site: string; first: string }>(
+      `SELECT toString(site_id) AS site,
+              formatDateTime(min(timestamp), '%Y-%m-%dT%H:%i:%SZ', 'UTC') AS first
+       FROM events GROUP BY site_id`,
+      {},
+    ),
+  ])
+  const firstBySite = new Map(firsts.map((f) => [f.site, f.first]))
+  return c.json(all.map((s) => ({ ...s, firstEvent: firstBySite.get(s.id) ?? null })))
+})
 
 const NewSite = z.object({
   domain: z

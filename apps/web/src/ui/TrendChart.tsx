@@ -1,14 +1,17 @@
 import { type PointerEvent, useEffect, useRef, useState } from 'react'
+import type { Interval } from '../api'
 
 export interface TrendPoint {
-  /** ISO date, YYYY-MM-DD. */
-  day: string
+  /** The bucket in the site's timezone: `YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`. */
+  t: string
   value: number
   revenue?: number
 }
 
 export interface TrendChartProps {
   data: TrendPoint[]
+  /** What one point spans; sets how its time is written. */
+  interval?: Interval
   /** Name of the plotted metric, used in the tooltip and the accessible label. */
   metric: string
   format?: (value: number) => string
@@ -20,13 +23,30 @@ export interface TrendChartProps {
 }
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
-const shortDay = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-const longDay = new Intl.DateTimeFormat('en', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  timeZone: 'UTC',
-})
+const utc = (options: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat('en', { ...options, timeZone: 'UTC' })
+
+/** Axis and tooltip formats per interval. Buckets are local times, so they format as UTC. */
+const FORMATS: Record<Interval, { tick: Intl.DateTimeFormat; tip: Intl.DateTimeFormat }> = {
+  minute: {
+    tick: utc({ hour: 'numeric', minute: '2-digit' }),
+    tip: utc({ month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+  },
+  hour: {
+    tick: utc({ hour: 'numeric' }),
+    tip: utc({ weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric' }),
+  },
+  day: {
+    tick: utc({ month: 'short', day: 'numeric' }),
+    tip: utc({ weekday: 'short', month: 'short', day: 'numeric' }),
+  },
+  month: {
+    tick: utc({ month: 'short', year: 'numeric' }),
+    tip: utc({ month: 'long', year: 'numeric' }),
+  },
+}
+
+const parse = (t: string) => new Date(t.length === 10 ? t : `${t.replace(' ', 'T')}Z`)
 
 function niceMax(v: number) {
   const mag = 10 ** Math.floor(Math.log10(v))
@@ -39,6 +59,7 @@ function niceMax(v: number) {
  */
 export function TrendChart({
   data,
+  interval = 'day',
   metric,
   format = (v) => v.toLocaleString('en'),
   formatRevenue,
@@ -85,7 +106,7 @@ export function TrendChart({
         height={height}
         className="block"
         role="img"
-        aria-label={`${metric} by day`}
+        aria-label={`${metric} by ${interval}`}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(undefined)}
       >
@@ -112,7 +133,7 @@ export function TrendChart({
         {data.map((d, i) =>
           d.revenue ? (
             <rect
-              key={`r${d.day}`}
+              key={`r${d.t}`}
               className="fill-revenue"
               x={x(i) - step * 0.3}
               width={step * 0.6}
@@ -150,13 +171,13 @@ export function TrendChart({
         {data.map((d, i) =>
           i % every === 0 ? (
             <text
-              key={`t${d.day}`}
+              key={`t${d.t}`}
               className="fill-muted font-mono text-tick"
               x={x(i)}
               y={height - 6}
               textAnchor="middle"
             >
-              {shortDay.format(new Date(d.day))}
+              {FORMATS[interval].tick.format(parse(d.t))}
             </text>
           ) : null,
         )}
@@ -191,7 +212,9 @@ export function TrendChart({
           className="pointer-events-none absolute top-1 z-10 grid gap-0.5 rounded-sm border border-line bg-surface px-3 py-2 shadow-pop"
           style={x(hover) > width / 2 ? { right: width - x(hover) + 12 } : { left: x(hover) + 12 }}
         >
-          <span className="text-label text-muted">{longDay.format(new Date(point.day))}</span>
+          <span className="text-label text-muted">
+            {FORMATS[interval].tip.format(parse(point.t))}
+          </span>
           <span className="flex items-center gap-2 whitespace-nowrap">
             <span className="size-2 rounded-full bg-visitors" aria-hidden="true" />
             {metric}

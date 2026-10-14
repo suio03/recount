@@ -9,7 +9,7 @@ import { compact, duration, money, percent } from './format'
 type Series = 'visitors' | 'pageviews'
 
 /**
- * KPI strip plus the daily chart. Visitors and Pageviews tiles pick the charted series; revenue
+ * KPI strip plus the chart, by minute, hour, day or month to suit the range. Visitors and Pageviews tiles pick the charted series; revenue
  * is drawn as bars under it whenever the site has any.
  */
 export function Overview({ scope }: { scope: Scope }) {
@@ -87,8 +87,9 @@ function Body({
       <div className="px-4 pt-4 pb-2">
         <TrendChart
           metric={series === 'visitors' ? 'Visitors' : 'Pageviews'}
+          interval={stats.interval}
           data={stats.series.map((d) => ({
-            day: d.day,
+            t: d.t,
             value: d[series],
             revenue: hasRevenue ? d.revenue : undefined,
           }))}

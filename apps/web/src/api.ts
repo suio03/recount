@@ -6,12 +6,19 @@ export interface Site {
   currency: string
   /** Whether the model reads this site: the reading, replay summaries and their patterns. */
   ai: boolean
+  /** ISO time of the site's first event, null before any; where "All time" starts. */
+  firstEvent: string | null
 }
 
 export interface DateRange {
   from: string
   to: string
+  /** Unix milliseconds; narrows the days to events since then, for the realtime view. */
+  since?: number
 }
+
+/** How finely the chart buckets the range. */
+export type Interval = 'minute' | 'hour' | 'day' | 'month'
 
 export interface Totals {
   visitors: number
@@ -30,7 +37,9 @@ export interface MainStats {
   totals: Totals
   /** The same-length period just before the range. */
   previous: Totals
-  series: Array<{ day: string; visitors: number; pageviews: number; revenue: number }>
+  interval: Interval
+  /** `t` is the bucket in the site's timezone: `YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`. */
+  series: Array<{ t: string; visitors: number; pageviews: number; revenue: number }>
 }
 
 export type Dimension =
@@ -203,7 +212,9 @@ export interface Scope {
 }
 
 const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) => {
-  const params = new URLSearchParams({ ...scope.range, ...extra })
+  const { from, to, since } = scope.range
+  const params = new URLSearchParams({ from, to, ...extra })
+  if (since !== undefined) params.set('since', String(since))
   for (const [key, value] of Object.entries(scope.filters)) if (value) params.set(key, value)
   return `/api/sites/${scope.siteId}/stats/${kind}?${params}`
 }

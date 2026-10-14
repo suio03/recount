@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   api,
+  type DateRange,
   type Dimension,
   type FilterKey,
   type Filters,
@@ -13,37 +14,31 @@ import {
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
 import { FilterBar } from './dashboard/FilterBar'
 import { readFilters } from './dashboard/filters'
-import { lastDays, rangeLabel } from './dashboard/format'
 import { GoalsPanel } from './dashboard/GoalsPanel'
 import { Overview } from './dashboard/Overview'
+import { PeriodPicker } from './dashboard/PeriodPicker'
+import { type Period, readPeriod, resolve, writePeriod } from './dashboard/period'
 import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
 import { SignIn } from './SignIn'
-import { SegmentedControl } from './ui/SegmentedControl'
 import { Switch } from './ui/Switch'
 
-const RANGES = [
-  { value: '7d', label: '7 days' },
-  { value: '30d', label: '30 days' },
-  { value: '90d', label: '90 days' },
-] as const
-type RangeKey = (typeof RANGES)[number]['value']
+/** The realtime view refetches this often. */
+const REALTIME_REFRESH_MS = 30_000
 
-/** Site, range and filters live in the query string so a view can be reloaded and shared. */
+/** Site, period and filters live in the query string so a view can be reloaded and shared. */
 function useUrlState() {
   const params = new URLSearchParams(window.location.search)
   const [domain, setDomain] = useState(params.get('site') ?? undefined)
-  const [range, setRange] = useState<RangeKey>(
-    RANGES.find((r) => r.value === params.get('range'))?.value ?? '30d',
-  )
+  const [period, setPeriod] = useState<Period>(() => readPeriod(params))
   const [filters, setFilters] = useState<Filters>(() => readFilters(params))
   useEffect(() => {
     const next = new URLSearchParams()
     if (domain) next.set('site', domain)
-    next.set('range', range)
+    writePeriod(period, next)
     for (const [key, value] of Object.entries(filters)) if (value) next.set(key, value)
     window.history.replaceState(null, '', `?${next}`)
-  }, [domain, range, filters])
+  }, [domain, period, filters])
   return {
     domain,
     // Filter values belong to one site, so switching sites starts unfiltered.
@@ -51,8 +46,8 @@ function useUrlState() {
       setDomain(d)
       setFilters({})
     },
-    range,
-    setRange,
+    period,
+    setPeriod,
     filters,
     setFilter: (key: FilterKey, value: string) => setFilters((f) => ({ ...f, [key]: value })),
     removeFilter: (key: FilterKey) => setFilters(({ [key]: _, ...rest }) => rest),
@@ -65,6 +60,10 @@ export function App() {
   const sites = useQuery({ queryKey: ['sites'], queryFn: api.sites })
   const state = useUrlState()
   const site = sites.data?.find((s) => s.domain === state.domain) ?? sites.data?.[0]
+  const realtime = state.period.preset === 'realtime'
+  const now = useClock(realtime ? REALTIME_REFRESH_MS : 60_000)
+  // Resolved on every tick so presets roll over at midnight and realtime moves with the clock.
+  const range = site && resolve(state.period, site.timezone, site.firstEvent, now)
 
   if (sites.error instanceof ApiError && sites.error.status === 401) return <SignIn />
   return (
@@ -79,8 +78,14 @@ export function App() {
           {site && <AiSwitch site={site} />}
         </div>
         <div className="flex items-center gap-2">
-          {site && (
-            <RangePicker timezone={site.timezone} value={state.range} onChange={state.setRange} />
+          {site && range && (
+            <PeriodPicker
+              period={state.period}
+              range={range}
+              timezone={site.timezone}
+              firstEvent={site.firstEvent}
+              onChange={state.setPeriod}
+            />
           )}
           {sites.data && <SignOut />}
         </div>
@@ -98,11 +103,12 @@ export function App() {
         onRemove={state.removeFilter}
         onClear={state.clearFilters}
       />
-      {site && (
+      {site && range && (
         <Dashboard
           key={site.id}
           site={site}
-          days={Number.parseInt(state.range, 10)}
+          range={range}
+          realtime={realtime}
           filters={state.filters}
           onFilter={state.setFilter}
           onShow={state.replaceFilters}
@@ -187,57 +193,54 @@ function SitePicker({
   )
 }
 
-function RangePicker({
-  timezone,
-  value,
-  onChange,
-}: {
-  timezone: string
-  value: RangeKey
-  onChange: (r: RangeKey) => void
-}) {
-  const range = lastDays(Number.parseInt(value, 10), timezone)
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <span className="text-label text-muted">
-        {rangeLabel(range)} · vs previous {Number.parseInt(value, 10)} days
-      </span>
-      <SegmentedControl label="Date range" options={RANGES} value={value} onChange={onChange} />
-    </div>
-  )
+/** The current time, updated every `ms`. */
+function useClock(ms: number) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), ms)
+    return () => clearInterval(timer)
+  }, [ms])
+  return now
 }
 
 function Dashboard({
   site,
-  days,
+  range,
+  realtime,
   filters,
   onFilter,
   onShow,
 }: {
   site: Site
-  days: number
+  range: DateRange
+  /** The last 30 minutes: no AI panels, since the window moves every refresh. */
+  realtime: boolean
   filters: Filters
   onFilter: (key: FilterKey, value: string) => void
   onShow: (filters: Filters) => void
 }) {
-  // Recomputed per render so the range rolls over at midnight in the site's timezone.
-  const { from, to } = lastDays(days, site.timezone)
+  const { from, to, since } = range
   const scope = useMemo<Scope>(
-    () => ({ siteId: site.id, range: { from, to }, filters }),
-    [site.id, from, to, filters],
+    () => ({ siteId: site.id, range: { from, to, since }, filters }),
+    [site.id, from, to, since, filters],
   )
   const props = { scope, onFilter: (d: Dimension, value: string) => onFilter(d, value) }
 
   return (
     <>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+      {realtime ? (
         <Overview scope={scope} />
-        {/* The overview sets the row height; a longer reading scrolls inside it. */}
-        <div className="relative min-h-0">
-          <ReadingPanel scope={scope} onShow={onShow} />
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+          <Overview scope={scope} />
+          {/* The overview sets the row height; a longer reading scrolls inside it. */}
+          <div className="relative min-h-0">
+            <ReadingPanel scope={scope} onShow={onShow} />
+          </div>
         </div>
-      </div>
-      {site.ai && <SessionsPanel scope={scope} timezone={site.timezone} />}
+      )}
+      {site.ai && !realtime && <SessionsPanel scope={scope} timezone={site.timezone} />}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
         <BreakdownPanel
           title="Acquisition"

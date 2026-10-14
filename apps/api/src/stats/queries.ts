@@ -1,7 +1,7 @@
 import { clickhouse } from '../db/clickhouse'
 import type { Site } from '../db/schema'
 import { type Filters, filterSql } from './filters'
-import type { DateRange } from './range'
+import { type DateRange, rangeParams, withinMoments } from './range'
 
 /** What every stats query is scoped to: one site, one date range, and the active filters. */
 export interface Scope {
@@ -10,7 +10,8 @@ export interface Scope {
   filters: Filters
 }
 
-export const inRange = `site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}`
+export const inRange = `site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}
+  AND ${withinMoments}`
 
 /**
  * Per-session columns, aggregated over a session's events. Acquisition and environment come from
@@ -20,7 +21,8 @@ export const inRange = `site_id = {site:UUID} AND toDate(timestamp, {tz:String})
 export const SESSION_COLUMNS = `
     session_id,
     any(visitor_id) AS visitor_id,
-    toDate(min(timestamp), {tz:String}) AS day,
+    min(timestamp) AS started,
+    toDate(started, {tz:String}) AS day,
     countIf(name = 'pageview') AS session_pageviews,
     count() AS session_events,
     dateDiff('second', min(timestamp), max(timestamp)) AS duration,
@@ -47,7 +49,12 @@ export function sessions(scope: Scope, range = scope.range) {
   const filter = filterSql(scope.filters)
   return {
     sql: `SELECT * FROM (${SESSIONS}) WHERE ${filter.where}`,
-    params: { site: scope.site.id, tz: scope.site.timezone, ...range, ...filter.params },
+    params: {
+      site: scope.site.id,
+      tz: scope.site.timezone,
+      ...rangeParams(range),
+      ...filter.params,
+    },
   }
 }
 
@@ -72,7 +79,7 @@ export function totalsOf(scope: Scope, range: DateRange) {
        count() AS sessions,
        sum(session_pageviews) AS pageviews,
        round(countIf(session_pageviews <= 1 AND session_events = session_pageviews) / greatest(count(), 1), 4) AS bounce_rate,
-       round(avg(duration)) AS avg_session_seconds
+       round(ifNotFinite(avg(duration), 0)) AS avg_session_seconds
      FROM (${s.sql})`,
     s.params,
   ).then((r) => r[0] as Totals)
@@ -105,8 +112,13 @@ export function payments(scope: Scope, range = scope.range) {
   return {
     sql: `SELECT * FROM payments FINAL
           WHERE site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}
-            AND ${filter.where}`,
-    params: { site: scope.site.id, tz: scope.site.timezone, ...range, ...filter.params },
+            AND ${withinMoments} AND ${filter.where}`,
+    params: {
+      site: scope.site.id,
+      tz: scope.site.timezone,
+      ...rangeParams(range),
+      ...filter.params,
+    },
   }
 }
 

@@ -4,6 +4,7 @@ import { db } from '../db/postgres'
 import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
+import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
 import {
   goalsOf,
@@ -15,7 +16,7 @@ import {
   sessions,
   totalsOf,
 } from '../stats/queries'
-import { previousRange, RangeQuery } from '../stats/range'
+import { intervalOf, previousRange, RangeQuery } from '../stats/range'
 
 /** Mounted under /api/sites/:id/stats behind the admin bearer token. */
 export const statsRoutes = new Hono<{ Variables: { scope: Scope } }>()
@@ -32,36 +33,46 @@ statsRoutes.use('*', async (c, next) => {
 })
 
 /**
- * Headline numbers for the range and the period before it, plus a daily series. Revenue is in
- * minor units of `currency`.
+ * Headline numbers for the range and the period before it, plus a series bucketed by
+ * `interval`: minutes for the realtime view, hours for one day, months past a quarter, days
+ * otherwise. Sessions count in the bucket they started in. Revenue is in minor units of `currency`.
  */
 statsRoutes.get('/main', async (c) => {
   const scope = c.get('scope')
   const before = previousRange(scope.range)
+  const interval = intervalOf(scope.range)
   const s = sessions(scope)
   const p = payments(scope)
-  const [totals, previous, revenue, previousRevenue, series, daily] = await Promise.all([
+  const [totals, previous, revenue, previousRevenue, counts, paid] = await Promise.all([
     totalsOf(scope, scope.range),
     totalsOf(scope, before),
     revenueOf(scope, scope.range),
     revenueOf(scope, before),
-    rows<{ day: string; visitors: number; pageviews: number }>(
-      `SELECT day, uniqExact(visitor_id) AS visitors, sum(session_pageviews) AS pageviews
-       FROM (${s.sql}) GROUP BY day ORDER BY day WITH FILL FROM {from:Date} TO {to:Date} + 1`,
+    rows<{ t: string; visitors: number; pageviews: number }>(
+      `SELECT ${bucketSql(interval, 'started')} AS t, uniqExact(visitor_id) AS visitors,
+              sum(session_pageviews) AS pageviews
+       FROM (${s.sql}) GROUP BY t`,
       s.params,
     ),
-    rows<{ day: string; revenue: number }>(
-      `SELECT toDate(timestamp, {tz:String}) AS day, sum(amount) AS revenue
-       FROM (${p.sql}) GROUP BY day`,
+    rows<{ t: string; revenue: number }>(
+      `SELECT ${bucketSql(interval, 'timestamp')} AS t, sum(amount) AS revenue
+       FROM (${p.sql}) GROUP BY t`,
       p.params,
     ),
   ])
-  const revenueByDay = new Map(daily.map((d) => [d.day, d.revenue]))
+  const byBucket = new Map(counts.map((d) => [d.t, d]))
+  const revenueByBucket = new Map(paid.map((d) => [d.t, d.revenue]))
   return c.json({
     currency: scope.site.currency,
+    interval,
     totals: { ...totals, ...revenue },
     previous: { ...previous, ...previousRevenue },
-    series: series.map((d) => ({ ...d, revenue: revenueByDay.get(d.day) ?? 0 })),
+    series: bucketsOf(scope.range, scope.site.timezone).map((t) => ({
+      t,
+      visitors: byBucket.get(t)?.visitors ?? 0,
+      pageviews: byBucket.get(t)?.pageviews ?? 0,
+      revenue: revenueByBucket.get(t) ?? 0,
+    })),
   })
 })
 
@@ -121,19 +132,23 @@ statsRoutes.get('/goals', async (c) => {
 
 /**
  * What changed and why: detected findings plus the AI reading of them. `refresh=1` rewrites a
- * cached reading.
+ * cached reading. The realtime view moves every minute, so it gets neither.
  */
-statsRoutes.get('/reading', async (c) =>
-  c.json(await readingFor(c.get('scope'), { refresh: c.req.query('refresh') === '1' })),
-)
+statsRoutes.get('/reading', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ findings: [], reading: null, status: 'off' })
+  return c.json(await readingFor(scope, { refresh: c.req.query('refresh') === '1' }))
+})
 
 /** Recorded sessions in scope with their AI summaries, newest first. */
 statsRoutes.get('/replays', async (c) => c.json(await replaysFor(c.get('scope'))))
 
 /**
  * What the range's summarized sessions have in common, each pattern citing its sessions.
- * `refresh=1` rewrites a cached digest.
+ * `refresh=1` rewrites a cached digest. Not for the realtime view, which moves every minute.
  */
-statsRoutes.get('/replays/digest', async (c) =>
-  c.json(await digestFor(c.get('scope'), { refresh: c.req.query('refresh') === '1' })),
-)
+statsRoutes.get('/replays/digest', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ digest: null, sessions: 0, status: 'off' })
+  return c.json(await digestFor(scope, { refresh: c.req.query('refresh') === '1' }))
+})
