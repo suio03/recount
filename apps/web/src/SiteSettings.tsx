@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleCheck, CreditCard, Globe, LoaderCircle, RefreshCw } from 'lucide-react'
+import { CircleCheck, CreditCard, Globe, Link2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, type Me, type RevenueSource, type Site, type SiteChange } from './api'
 import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
@@ -120,6 +120,7 @@ export function SiteSettings({ site, onDeleted }: { site: Site; onDeleted: () =>
       <Install site={site} />
       <General key={site.id} site={site} />
       <Revenue key={`revenue-${site.id}`} site={site} />
+      <PublicLink site={site} />
       <DeleteSite site={site} onDeleted={onDeleted} />
     </div>
   )
@@ -266,6 +267,59 @@ function General({ site }: { site: Site }) {
           )}
         </div>
       </form>
+    </Panel>
+  )
+}
+
+/** A read-only dashboard anyone with the link can open, like a public stats page. */
+function PublicLink({ site }: { site: Site }) {
+  const queryClient = useQueryClient()
+  const change = useMutation({
+    mutationFn: (on: boolean) => (on ? api.share(site.id) : api.unshare(site.id)),
+    onSuccess: (updated) =>
+      queryClient.setQueryData<Site[]>(['sites'], (all) =>
+        all?.map((s) => (s.id === updated.id ? { ...s, shareToken: updated.shareToken } : s)),
+      ),
+  })
+  const link = site.shareToken && `${window.location.origin}/share/${site.shareToken}`
+  return (
+    <Panel title="Public link">
+      <p className="m-0 text-body text-muted">
+        Anyone with the link sees this site's dashboard without signing in: visitors, sources,
+        pages, goals and revenue. Not the AI reading or recorded sessions.
+      </p>
+      {link && <CopyBox label="Link" value={link} />}
+      <div className="flex flex-wrap items-center gap-2">
+        {link ? (
+          <>
+            <ConfirmButton
+              label="New link"
+              confirm="Stop the old link"
+              disabled={change.isPending}
+              onConfirm={() => change.mutate(true)}
+            />
+            <ConfirmButton
+              label="Turn off"
+              confirm="Turn off the link"
+              disabled={change.isPending}
+              onConfirm={() => change.mutate(false)}
+            />
+          </>
+        ) : (
+          <Button
+            variant="quiet"
+            className="h-8"
+            disabled={change.isPending}
+            onClick={() => change.mutate(true)}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Link2 className="size-4" strokeWidth={1.75} aria-hidden="true" />
+              Create link
+            </span>
+          </Button>
+        )}
+      </div>
+      {change.isError && <ErrorText>{errorOf(change.error)}</ErrorText>}
     </Panel>
   )
 }

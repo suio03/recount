@@ -92,6 +92,8 @@ export const sites = pgTable('sites', {
   currency: text('currency').notNull().default('USD'),
   /** Whether the model reads this site: the dashboard reading and replay summaries. */
   ai: boolean('ai').notNull().default(false),
+  /** Opens the public read-only dashboard at /share/<token>; null when there is none. */
+  shareToken: text('share_token').unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

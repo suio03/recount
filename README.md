@@ -85,7 +85,10 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 In the dashboard, pick **Add a site…** in the site menu (with no sites yet, the form is shown
 straight away). The site's settings then show the script tag to paste, built from the options
 below, and say when the first pageview arrives. **Site settings** also changes the name,
-timezone and currency, and deletes a site with everything recorded for it.
+timezone and currency, and deletes a site with everything recorded for it. **Public link**
+there gives a read-only dashboard anyone can open without signing in, at `/share/<token>`; it
+shows the numbers, revenue included, but not the AI reading or recordings. A new link stops the
+old one.
 
 Scripts can do the same with an API key from Settings:
 

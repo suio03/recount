@@ -2,7 +2,15 @@ import { eq, inArray } from 'drizzle-orm'
 import { type Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
-import { type AuthEnv, atLeast, orgsOf, type Principal, requireAuth, roleIn } from '../auth'
+import {
+  type AuthEnv,
+  atLeast,
+  newToken,
+  orgsOf,
+  type Principal,
+  requireAuth,
+  roleIn,
+} from '../auth'
 import { clickhouse } from '../db/clickhouse'
 import { db } from '../db/postgres'
 import { type Role, type Site, sites } from '../db/schema'
@@ -64,6 +72,8 @@ adminRoutes.get('/api/sites', async (c) => {
     visible.map((s) => ({
       ...s,
       role: roles.get(s.orgId),
+      // Only admins hand out the public link.
+      shareToken: atLeast(roles.get(s.orgId), 'admin') ? s.shareToken : null,
       firstEvent: firstBySite.get(s.id) ?? null,
     })),
   )
@@ -134,6 +144,27 @@ adminRoutes.patch('/api/sites/:id', async (c) => {
     ? await db.update(sites).set(parsed.data).where(eq(sites.id, site.id)).returning()
     : [site]
   return updated ? c.json({ ...updated, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
+})
+
+/** Makes a new public link, which retires the old one. */
+adminRoutes.put('/api/sites/:id/share', async (c) => {
+  if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
+  const [site] = await db
+    .update(sites)
+    .set({ shareToken: newToken().slice(0, 22) })
+    .where(eq(sites.id, c.get('site').id))
+    .returning()
+  return site ? c.json({ ...site, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
+})
+
+adminRoutes.delete('/api/sites/:id/share', async (c) => {
+  if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
+  const [site] = await db
+    .update(sites)
+    .set({ shareToken: null })
+    .where(eq(sites.id, c.get('site').id))
+    .returning()
+  return site ? c.json({ ...site, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
 })
 
 /** Tables in ClickHouse keyed by site, whose rows go with the site. */

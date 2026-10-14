@@ -8,6 +8,7 @@ import { adminRoutes } from './routes/admin'
 import { eventRoutes } from './routes/event'
 import { orgRoutes } from './routes/orgs'
 import { replayRoutes } from './routes/replay'
+import { shareRoutes } from './routes/share'
 
 export const app = new Hono()
 
@@ -21,6 +22,7 @@ app.route('/', replayRoutes)
 app.route('/', accountRoutes)
 app.route('/', orgRoutes)
 app.route('/', adminRoutes)
+app.route('/', shareRoutes)
 
 /** The tracker, and the recorder it loads for sampled sessions. */
 for (const file of ['script.js', 'replay.js'])

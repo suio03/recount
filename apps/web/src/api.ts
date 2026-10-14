@@ -61,6 +61,17 @@ export interface Site {
   ai: boolean
   /** ISO time of the site's first event, null before any; where "All time" starts. */
   firstEvent: string | null
+  /** Opens the public read-only dashboard at /share/<token>. Null when off, and for viewers. */
+  shareToken: string | null
+}
+
+/** A site as its public link shows it. */
+export interface SharedSite {
+  domain: string
+  name: string
+  timezone: string
+  currency: string
+  firstEvent: string | null
 }
 
 /** Where a site's payments come from. */
@@ -300,6 +311,8 @@ export type Filters = Partial<Record<FilterKey, string>>
 /** What every stats request is scoped to. Also used as the react-query key. */
 export interface Scope {
   siteId: string
+  /** Set on a public link: stats come from the link instead of a signed-in site. */
+  share?: string
   range: DateRange
   filters: Filters
 }
@@ -309,7 +322,8 @@ const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) =
   const params = new URLSearchParams({ from, to, ...extra })
   if (since !== undefined) params.set('since', String(since))
   for (const [key, value] of Object.entries(scope.filters)) if (value) params.set(key, value)
-  return `/api/sites/${scope.siteId}/stats/${kind}?${params}`
+  const base = scope.share ? `/api/share/${scope.share}` : `/api/sites/${scope.siteId}`
+  return `${base}/stats/${kind}?${params}`
 }
 
 export const api = {
@@ -320,6 +334,13 @@ export const api = {
   updateSite: (siteId: string, change: SiteChange) =>
     send<Site>('PATCH', `/api/sites/${siteId}`, change),
   deleteSite: (siteId: string) => del(`/api/sites/${siteId}`),
+  share: (siteId: string) => send<Site>('PUT', `/api/sites/${siteId}/share`, {}),
+  unshare: (siteId: string) =>
+    fetch(`/api/sites/${siteId}/share`, { method: 'DELETE' }).then(async (res) => {
+      if (!res.ok) throw await failure(res)
+      return res.json() as Promise<Site>
+    }),
+  sharedSite: (token: string) => get<SharedSite>(`/api/share/${encodeURIComponent(token)}/site`),
   revenueSources: (siteId: string) => get<RevenueSources>(`/api/sites/${siteId}/revenue`),
   connectRevenue: (siteId: string, input: { key: string; match: Record<string, string> }) =>
     send<RevenueSource>('POST', `/api/sites/${siteId}/revenue`, { provider: 'paddle', ...input }),

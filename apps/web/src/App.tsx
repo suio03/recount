@@ -82,7 +82,16 @@ function useInviteToken() {
   return [token, done] as const
 }
 
+/** A public link opens /share/<token>: the dashboard without signing in. */
+const shareToken = () => /^\/share\/([\w-]{20,})\/?$/.exec(window.location.pathname)?.[1]
+
 export function App() {
+  const [share] = useState(shareToken)
+  if (share) return <Shared token={share} />
+  return <Accounts />
+}
+
+function Accounts() {
   const [invite, inviteDone] = useInviteToken()
   const me = useQuery({ queryKey: ['me'], queryFn: api.me, enabled: !invite })
   if (invite) return <AcceptInvite token={invite} onDone={inviteDone} />
@@ -207,6 +216,66 @@ function SignedIn({ me }: { me: Me }) {
   )
 }
 
+/** A site's public dashboard: the numbers, with no AI panels or recordings. */
+function Shared({ token }: { token: string }) {
+  const site = useQuery({
+    queryKey: ['shared', token],
+    queryFn: () => api.sharedSite(token),
+    // A link that was turned off stays off.
+    retry: (failures, error) =>
+      !(error instanceof ApiError && error.status === 404) && failures < 3,
+  })
+  const state = useUrlState()
+  const realtime = state.period.preset === 'realtime'
+  const now = useClock(realtime ? REALTIME_REFRESH_MS : 60_000)
+  if (site.error instanceof ApiError && site.error.status === 404)
+    return <p className="p-6 text-muted">This link is not shared any more.</p>
+  if (site.isError) return <p className="p-6 text-muted">Could not load: {String(site.error)}</p>
+  if (!site.data) return null
+  const { domain, timezone, firstEvent } = site.data
+  const range = resolve(state.period, timezone, firstEvent, now)
+  return (
+    <div className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-5 pb-12 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-title font-semibold tracking-[-0.01em]">{domain}</span>
+          <span className="text-label text-muted">Shared dashboard</span>
+        </div>
+        <PeriodPicker
+          period={state.period}
+          range={range}
+          timezone={timezone}
+          firstEvent={firstEvent}
+          onChange={state.setPeriod}
+        />
+      </header>
+      <FilterBar
+        filters={state.filters}
+        onRemove={state.removeFilter}
+        onClear={state.clearFilters}
+      />
+      <Dashboard
+        site={{ id: token, timezone, ai: false, role: 'viewer' }}
+        share={token}
+        range={range}
+        realtime={realtime}
+        filters={state.filters}
+        onFilter={state.setFilter}
+        onShow={state.replaceFilters}
+      />
+      <footer className="pt-4 text-center text-label text-muted">
+        Counted by{' '}
+        <a
+          href="https://github.com/suio03/recount"
+          className="text-ink underline-offset-2 hover:underline"
+        >
+          Recount
+        </a>
+      </footer>
+    </div>
+  )
+}
+
 /** Why there is no dashboard yet, when the sites have not loaded or there are none. */
 function SitesView({
   sites,
@@ -322,13 +391,16 @@ function useClock(ms: number) {
 
 function Dashboard({
   site,
+  share,
   range,
   realtime,
   filters,
   onFilter,
   onShow,
 }: {
-  site: Site
+  site: Pick<Site, 'id' | 'timezone' | 'ai' | 'role'>
+  /** A public link's token: only the panels the link may show. */
+  share?: string
   range: DateRange
   /** The last 30 minutes: no AI panels, since the window moves every refresh. */
   realtime: boolean
@@ -338,14 +410,14 @@ function Dashboard({
 }) {
   const { from, to, since } = range
   const scope = useMemo<Scope>(
-    () => ({ siteId: site.id, range: { from, to, since }, filters }),
-    [site.id, from, to, since, filters],
+    () => ({ siteId: site.id, share, range: { from, to, since }, filters }),
+    [site.id, share, from, to, since, filters],
   )
   const props = { scope, onFilter: (d: Dimension, value: string) => onFilter(d, value) }
 
   return (
     <>
-      {realtime ? (
+      {realtime || share ? (
         <Overview scope={scope} />
       ) : (
         <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
