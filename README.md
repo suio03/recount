@@ -1,6 +1,6 @@
 # Recount
 
-Self-hosted web analytics with an AI layer underneath, for one owner running many sites.
+Open-source web analytics with an AI layer underneath. Self-host it, or use the hosted service.
 
 The dashboard shows exact numbers: visitors, sources, pages, goals and revenue. Underneath, an
 optional AI layer reads the same data and says what changed and why, summarizes notable recorded

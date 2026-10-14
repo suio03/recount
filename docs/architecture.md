@@ -14,7 +14,15 @@ replaces (`../analytics`), whose data will be migrated.
 3. **Semantics from day one.** Events carry page type, element text and section; each site has an
    event catalog and metric definitions in `sites/`. Data recorded without meaning cannot get it
    back later.
-4. **Personal use, open source.** Single owner, many sites. No multi-tenant billing.
+4. **One codebase, two ways to run it** (decided 2026-10-14, the Plausible model). Anyone can
+   self-host the open-source image; people who would rather not run servers use the hosted
+   service. Both run the same code: accounts, teams and per-site roles exist in both, and the
+   hosted service adds sign-up, billing and usage limits behind configuration. A self-hosted
+   instance has no billing and no limits. The license stays MIT: the code is not the moat, since
+   anyone can rebuild it; the hosted service, its uptime and the trust of its users are.
+5. **Everything in the dashboard.** Adding a site, checking the install, connecting revenue,
+   setting replay and AI options and inviting people happen in the UI. CLIs stay for scripting,
+   not as the only way to do something.
 
 ## Identity
 
@@ -30,6 +38,27 @@ replaces (`../analytics`), whose data will be migrated.
 Each visitor will store both first touch and last non-direct touch. Dashboards default to last
 non-direct touch. Payments link to visitors by passing `rc_vid` in checkout metadata (Paddle
 `custom_data`, Creem `metadata`).
+
+## Accounts and tenancy
+
+- `users` sign in with email (magic link or password). `orgs` own sites; `memberships` give a
+  user a role in an org: owner, admin or viewer. `invites` add people by email.
+- Every private API call is scoped to the caller's orgs. Events in ClickHouse are already keyed
+  by site, so isolation is a check on site ownership, not a new storage layout.
+- API keys replace `ADMIN_TOKEN` for scripts; a self-hosted instance creates its first owner on
+  first start.
+- Third-party secrets (Paddle and Creem keys) are entered in the dashboard and stored encrypted
+  with a key from the environment, instead of naming an environment variable per source.
+- A site can have a public read-only dashboard link.
+
+## Hosted service
+
+- Plans meter pageviews per month, recorded sessions and AI summaries per org. Usage is counted
+  from ClickHouse; over the limit, ingestion keeps working for a grace period and then stops.
+- Billing through Paddle. Off unless configured, so self-hosted instances never see it.
+- Needs a privacy policy, a data processing agreement and account deletion that removes events
+  and recordings. Session replay records other sites' visitors, so masking stays on by default.
+- AI on the hosted service uses our model key within plan limits; self-hosters bring their own.
 
 ## Storage
 
@@ -62,12 +91,18 @@ Next:
    sites' tracker over from Plausible.
 2. **Data migration**: import `events_v2`/`sessions_v2` and the payment ledger from the Plausible
    fork. Imported history is cookieless (daily hashes).
-3. **AI cost control**: daily spend cap across sites and a log of model usage.
-4. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
-5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-6. **Attribution**: first touch next to last non-direct touch; Creem sync.
-7. **Questions and digests**: MCP server for asking about the data, periodic digests.
-8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+3. **Accounts and teams**: users, orgs, roles, invites, API keys; private API scoped by org.
+4. **Site management in the dashboard**: add and delete sites, install snippet and a
+   first-event check, site settings, replay and AI options, revenue connection with encrypted
+   keys, public dashboard links.
+5. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
+6. **Hosted service**: sign-up, plans and Paddle billing, limits, account deletion, landing page,
+   docs site, privacy policy and DPA.
+7. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
+8. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+9. **Attribution**: first touch next to last non-direct touch; Creem sync.
+10. **Questions and digests**: MCP server for asking about the data, periodic email digests.
+11. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
 
 ## Known gaps in the skeleton
 
@@ -75,6 +110,6 @@ Next:
   region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
 - One secret (`ADMIN_TOKEN`) guards the private API: scripts send it as a bearer token, and the
-  dashboard trades it for a session cookie. There are no user accounts.
+  dashboard trades it for a session cookie. There are no user accounts yet (roadmap item 3).
 - Sign-in rate limits live in process memory, which is enough for one instance.
 - SPA pageviews fire on `pushState` before the new page sets its title.
