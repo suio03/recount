@@ -71,8 +71,8 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 - ClickHouse: `events` (pageviews, clicks, custom events with semantic context), `ai_crawls`,
   `payments`, `replay_chunks` (raw rrweb batches, kept 30 days) and `replay_sessions`
   (extracted timelines, kept 180 days).
-- PostgreSQL: sites, salts, revenue sources, cached readings and replay summaries; later goals,
-  funnels and users.
+- PostgreSQL: accounts, sites, salts, revenue sources, cached readings and replay summaries,
+  the AI usage log; later goals and funnels.
 
 ## Roadmap
 
@@ -98,17 +98,18 @@ Done:
    links, API keys; the private API is scoped by org.
 10. **Site management in the dashboard**: adding and deleting sites, the install snippet with a
     first-event check, site settings, connecting Paddle with an encrypted key, public links.
+11. **Usage and AI cost control**: a log of every model call with tokens and cost, a daily AI
+    budget per org, admin-only rewrites, monthly usage per site in Settings.
 
 Next:
 
-1. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
-2. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
+1. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-3. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
-4. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-5. **Attribution**: first touch next to last non-direct touch; Creem sync.
-6. **Questions and digests**: MCP server for asking about the data, periodic email digests.
-7. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+2. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
+3. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+4. **Attribution**: first touch next to last non-direct touch; Creem sync.
+5. **Questions and digests**: MCP server for asking about the data, periodic email digests.
+6. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
 
 ## Known gaps in the skeleton
 
@@ -116,6 +117,5 @@ Next:
   region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
 - No email yet: invites are links to copy, and forgotten passwords are reset with the `user` CLI.
-- Viewers can refresh the AI reading, which costs model calls (roadmap item 2 caps spend).
 - Sign-in rate limits live in process memory, which is enough for one instance.
 - SPA pageviews fire on `pushState` before the new page sets its title.

@@ -1,6 +1,6 @@
 import { semanticsFor } from '@recount/sites'
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
-import { KeyProblem, structured } from '../ai/claude'
+import { AiUnavailable, structured } from '../ai/claude'
 import { db } from '../db/postgres'
 import { replaySummaries, type Site, sites } from '../db/schema'
 import { env } from '../env'
@@ -32,6 +32,8 @@ const LOOKBACK_DAYS = 3
 export async function writeSummary(site: Site, c: Candidate, reasons: Reason[]): Promise<Summary> {
   const timeline = JSON.parse(c.timeline) as Interaction[]
   const output = await structured({
+    site,
+    kind: 'summary',
     model: env.REPLAY_MODEL,
     system: SYSTEM,
     user: prompt(site, c, timeline, reasons),
@@ -153,7 +155,7 @@ export async function summarizeSite(site: Site) {
       written++
     } catch (e) {
       // A refused key or empty account fails every call, so stop rather than retry each one.
-      if (e instanceof KeyProblem) throw e
+      if (e instanceof AiUnavailable) throw e
       console.error(`replay summary ${site.domain}/${c.session_id}:`, e)
     }
   }
@@ -164,8 +166,15 @@ export async function summarizeSite(site: Site) {
 export async function summarizeAll() {
   if (!env.ANTHROPIC_API_KEY) return 0
   let written = 0
-  for (const site of await db.select().from(sites).where(eq(sites.ai, true)))
-    written += await summarizeSite(site)
+  for (const site of await db.select().from(sites).where(eq(sites.ai, true))) {
+    try {
+      written += await summarizeSite(site)
+    } catch (e) {
+      // An org past today's budget waits for tomorrow; other orgs' sites still get theirs.
+      if (e instanceof AiUnavailable && e.kind === 'over_budget') continue
+      throw e
+    }
+  }
   return written
 }
 

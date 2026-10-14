@@ -14,6 +14,11 @@ const Env = z.object({
   REPLAY_MODEL: z.string().default('claude-haiku-5-5'),
   /** At most this many session summaries per site per day; the most notable sessions go first. */
   REPLAY_SUMMARIES_PER_DAY: z.coerce.number().int().min(0).default(50),
+  /**
+   * What each org may spend on model calls per day (UTC), in US dollars. Past it, readings,
+   * summaries and patterns wait for the next day. `0` stops all model calls.
+   */
+  AI_DAILY_BUDGET_USD: z.coerce.number().min(0).default(5),
   /** Read the visitor's address and country from Cloudflare's headers. Only behind Cloudflare. */
   TRUST_CF_HEADERS: z.stringbool().default(false),
   /**

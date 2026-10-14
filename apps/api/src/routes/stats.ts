@@ -1,6 +1,7 @@
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { z } from 'zod'
-import type { Site } from '../db/schema'
+import { atLeast } from '../auth'
+import type { Role, Site } from '../db/schema'
 import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
@@ -19,7 +20,14 @@ import {
 import { intervalOf, previousRange, RangeQuery } from '../stats/range'
 
 /** Mounted under /api/sites/:id/stats, after the site and the caller's access are checked. */
-export const statsRoutes = new Hono<{ Variables: { scope: Scope; site: Site } }>()
+type StatsEnv = { Variables: { scope: Scope; site: Site; role?: Role } }
+export const statsRoutes = new Hono<StatsEnv>()
+
+/** Rewriting a cached reading or digest costs a model call, so only admins may ask for one. */
+const refreshOf = (c: Context<StatsEnv>) => {
+  if (c.req.query('refresh') !== '1') return false
+  return atLeast(c.get('role'), 'admin') ? true : null
+}
 
 statsRoutes.use('*', async (c, next) => {
   const site = c.get('site')
@@ -134,7 +142,9 @@ statsRoutes.get('/goals', async (c) => {
 statsRoutes.get('/reading', async (c) => {
   const scope = c.get('scope')
   if (scope.range.since !== undefined) return c.json({ findings: [], reading: null, status: 'off' })
-  return c.json(await readingFor(scope, { refresh: c.req.query('refresh') === '1' }))
+  const refresh = refreshOf(c)
+  if (refresh === null) return c.json({ error: 'only admins can refresh' }, 403)
+  return c.json(await readingFor(scope, { refresh }))
 })
 
 /** Recorded sessions in scope with their AI summaries, newest first. */
@@ -147,5 +157,7 @@ statsRoutes.get('/replays', async (c) => c.json(await replaysFor(c.get('scope'))
 statsRoutes.get('/replays/digest', async (c) => {
   const scope = c.get('scope')
   if (scope.range.since !== undefined) return c.json({ digest: null, sessions: 0, status: 'off' })
-  return c.json(await digestFor(scope, { refresh: c.req.query('refresh') === '1' }))
+  const refresh = refreshOf(c)
+  if (refresh === null) return c.json({ error: 'only admins can refresh' }, 403)
+  return c.json(await digestFor(scope, { refresh }))
 })

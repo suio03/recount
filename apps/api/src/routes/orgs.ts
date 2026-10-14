@@ -14,9 +14,10 @@ import {
 } from '../auth'
 import { db } from '../db/postgres'
 import { apiKeys, invites, memberships, orgs, type Role, users } from '../db/schema'
+import { usageOf } from '../usage'
 import { Email } from './account'
 
-/** An org's name, members, invites and API keys. */
+/** An org's name, members, invites, API keys and usage. */
 export const orgRoutes = new Hono<AuthEnv & { Variables: { orgId: string; role: Role } }>()
 
 const INVITE_DAYS = 7
@@ -190,6 +191,13 @@ orgRoutes.patch('/api/orgs/:org/members/:user', async (c) => {
 })
 
 orgRoutes.delete('/api/orgs/:org/members/:user', (c) => changeMember(c, null))
+
+/** What the org used in a month (`?month=YYYY-MM`, the current UTC month by default). */
+orgRoutes.get('/api/orgs/:org/usage', async (c) => {
+  const month = c.req.query('month') ?? new Date().toISOString().slice(0, 7)
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return c.json({ error: 'month is YYYY-MM' }, 400)
+  return c.json(await usageOf(c.get('orgId'), month))
+})
 
 orgRoutes.get('/api/orgs/:org/keys', async (c) => {
   if (!atLeast(c.get('role'), 'admin')) return forbidden(c)

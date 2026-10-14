@@ -78,7 +78,7 @@ export function ReadingPanel({
   onShow,
 }: {
   scope: Scope
-  /** Whether the viewer can switch AI on; only admins see the switch. */
+  /** Whether the viewer is an admin, who can switch AI on and rewrite the reading. */
   canEnable: boolean
   /** Replaces the dashboard's filters with a finding's, to show its evidence. */
   onShow: (filters: Filters) => void
@@ -109,7 +109,7 @@ export function ReadingPanel({
     >
       <header className="flex min-h-7 items-center justify-between gap-3">
         <h2 className="m-0 text-body font-semibold">The reading</h2>
-        {data?.status === 'ok' && (
+        {data?.status === 'ok' && canEnable && (
           <button
             type="button"
             onClick={refresh}
@@ -207,6 +207,12 @@ function Body({
         <p className="m-0 text-muted" title={data.error}>
           The Claude account is out of credit. Add credit in the Claude Console to have these
           changes explained.
+        </p>
+      )}
+      {data.status === 'over_budget' && (
+        <p className="m-0 text-muted">
+          Today&apos;s AI budget is spent, so these changes are explained again tomorrow (UTC). The
+          day&apos;s spend is under Settings → Usage.
         </p>
       )}
       {data.status === 'error' && (

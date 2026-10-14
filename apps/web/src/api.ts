@@ -65,6 +65,25 @@ export interface Site {
   shareToken: string | null
 }
 
+/** What one site used in a month. Model calls of a deleted site have no site. */
+export interface SiteUsage {
+  siteId: string | null
+  domain: string | null
+  pageviews: number
+  recordings: number
+  aiCalls: number
+  /** In millionths of a US dollar. */
+  aiCostMicros: number
+}
+
+export interface Usage {
+  /** `YYYY-MM`, in UTC. */
+  month: string
+  sites: SiteUsage[]
+  /** Today's model spend (UTC) against the daily budget, both in micros. */
+  ai: { todayMicros: number; dailyBudgetMicros: number }
+}
+
 /** A site as its public link shows it. */
 export interface SharedSite {
   domain: string
@@ -192,7 +211,7 @@ export interface ReadingResult {
     model: string
     generatedAt: string
   } | null
-  status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'over_budget' | 'error'
   error?: string
 }
 
@@ -256,7 +275,15 @@ export interface ReplayDigest {
   } | null
   /** Summarized sessions the digest reads. */
   sessions: number
-  status: 'ok' | 'off' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  status:
+    | 'ok'
+    | 'off'
+    | 'too_few'
+    | 'unconfigured'
+    | 'key_rejected'
+    | 'no_credit'
+    | 'over_budget'
+    | 'error'
   error?: string
   generatedAt?: string
 }
@@ -367,6 +394,7 @@ export const api = {
   setRole: (orgId: string, userId: string, role: Role) =>
     send<{ ok: true }>('PATCH', `/api/orgs/${orgId}/members/${userId}`, { role }),
   removeMember: (orgId: string, userId: string) => del(`/api/orgs/${orgId}/members/${userId}`),
+  usage: (orgId: string, month: string) => get<Usage>(`/api/orgs/${orgId}/usage?month=${month}`),
   keys: (orgId: string) => get<ApiKey[]>(`/api/orgs/${orgId}/keys`),
   createKey: (orgId: string, name: string) =>
     send<ApiKey & { key: string }>('POST', `/api/orgs/${orgId}/keys`, { name }),

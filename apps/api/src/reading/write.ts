@@ -1,6 +1,7 @@
 import type { SiteSemantics } from '@recount/semantic'
 import { z } from 'zod'
 import { structured } from '../ai/claude'
+import type { Site } from '../db/schema'
 import { env } from '../env'
 import type { DateRange } from '../stats/range'
 import { days } from '../stats/range'
@@ -72,15 +73,17 @@ ${findings.map(describe).join('\n')}`
  * their findings do not contain, are dropped.
  */
 export async function writeReading(
-  domain: string,
+  site: Site,
   range: DateRange,
   findings: Finding[],
   semantics: SiteSemantics | undefined,
 ): Promise<Reading> {
   const output = await structured({
+    site,
+    kind: 'reading',
     model: env.READING_MODEL,
     system: SYSTEM,
-    user: prompt(domain, range, findings, semantics),
+    user: prompt(site.domain, range, findings, semantics),
     schema: Output,
   })
 

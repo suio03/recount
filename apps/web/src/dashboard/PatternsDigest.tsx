@@ -14,9 +14,12 @@ import { clock, LEAD_IN_MS, MOMENT_TONES } from './moments'
 export function PatternsDigest({
   scope,
   sessions,
+  canRefresh,
   onWatch,
 }: {
   scope: Scope
+  /** Admins can find the patterns again, which costs a model call. */
+  canRefresh: boolean
   /** The listed sessions, which the digest's evidence points into. */
   sessions: ReplaySession[]
   onWatch: (session: ReplaySession, start: number) => void
@@ -52,7 +55,7 @@ export function PatternsDigest({
         <h3 className="m-0 text-label font-medium text-muted">
           {data ? `Across ${data.sessions} summarized sessions` : 'Across these sessions'}
         </h3>
-        {data?.status === 'ok' && (
+        {data?.status === 'ok' && canRefresh && (
           <button
             type="button"
             onClick={refresh}
@@ -86,6 +89,10 @@ export function PatternsDigest({
       ) : data.status === 'no_credit' ? (
         <p className="m-0 text-muted">
           The Anthropic account is out of credit, so no patterns yet.
+        </p>
+      ) : data.status === 'over_budget' ? (
+        <p className="m-0 text-muted">
+          Today&apos;s AI budget is spent, so no patterns until tomorrow.
         </p>
       ) : data.status === 'error' || !data.digest ? (
         <p className="m-0 text-muted">Could not find patterns this time. Try again later.</p>

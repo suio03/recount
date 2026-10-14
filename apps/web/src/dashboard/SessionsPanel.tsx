@@ -49,7 +49,16 @@ const MIN_FOR_PATTERNS = 3
  * Recorded visits worth knowing about, each told in a sentence by the AI so nobody has to
  * watch them one by one: who paid or converted, and who got stuck or gave up.
  */
-export function SessionsPanel({ scope, timezone }: { scope: Scope; timezone: string }) {
+export function SessionsPanel({
+  scope,
+  timezone,
+  canRefresh,
+}: {
+  scope: Scope
+  timezone: string
+  /** Admins can find the patterns again. */
+  canRefresh: boolean
+}) {
   const [show, setShow] = useState<Show>('all')
   const [expanded, setExpanded] = useState(false)
   const [watching, setWatching] = useState<{ session: ReplaySession; start: number }>()
@@ -97,6 +106,7 @@ export function SessionsPanel({ scope, timezone }: { scope: Scope; timezone: str
             <PatternsDigest
               scope={scope}
               sessions={data.sessions}
+              canRefresh={canRefresh}
               onWatch={(session, start) => setWatching({ session, start })}
             />
           )}

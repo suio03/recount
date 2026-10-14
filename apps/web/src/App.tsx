@@ -428,7 +428,9 @@ function Dashboard({
           </div>
         </div>
       )}
-      {site.ai && !realtime && <SessionsPanel scope={scope} timezone={site.timezone} />}
+      {site.ai && !realtime && (
+        <SessionsPanel scope={scope} timezone={site.timezone} canRefresh={site.role !== 'viewer'} />
+      )}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
         <BreakdownPanel
           title="Acquisition"

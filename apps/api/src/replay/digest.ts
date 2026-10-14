@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { semanticsFor } from '@recount/sites'
 import { and, eq, gt } from 'drizzle-orm'
-import { KeyProblem, structured } from '../ai/claude'
+import { AiUnavailable, structured } from '../ai/claude'
+import { withinBudget } from '../ai/usage'
 import { db } from '../db/postgres'
 import { readings } from '../db/schema'
 import { env } from '../env'
@@ -25,8 +26,19 @@ export interface DigestResponse {
   digest: Digest | null
   /** Summarized sessions the digest reads. */
   sessions: number
-  /** Why there is no digest: AI off, too few sessions to compare, no key, or a failed call. */
-  status: 'ok' | 'off' | 'too_few' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  /**
+   * Why there is no digest: AI off, too few sessions to compare, no key, a refused key, no
+   * credit, today's AI budget spent, or a failed call.
+   */
+  status:
+    | 'ok'
+    | 'off'
+    | 'too_few'
+    | 'unconfigured'
+    | 'key_rejected'
+    | 'no_credit'
+    | 'over_budget'
+    | 'error'
   error?: string
   generatedAt?: string
 }
@@ -65,7 +77,8 @@ export async function digestFor(scope: Scope, { refresh = false } = {}): Promise
     )
     .digest('hex')
 
-  if (!refresh) {
+  // Past today's budget a refresh keeps the cached copy rather than replacing it with nothing.
+  if (!refresh || !(await withinBudget(scope.site.orgId))) {
     const cached = await db.query.readings.findFirst({
       where: and(eq(readings.key, key), gt(readings.createdAt, new Date(Date.now() - TTL_MS))),
     })
@@ -78,6 +91,8 @@ export async function digestFor(scope: Scope, { refresh = false } = {}): Promise
     const period = `${shortDay(scope.range.from)} to ${shortDay(scope.range.to)} (${days(scope.range)} days)`
     try {
       const output = await structured({
+        site: scope.site,
+        kind: 'digest',
         model: env.READING_MODEL,
         system: SYSTEM,
         user: prompt(scope.site.domain, period, sessions, semanticsFor(scope.site.domain)),
@@ -98,7 +113,7 @@ export async function digestFor(scope: Scope, { refresh = false } = {}): Promise
     } catch (err) {
       console.error('replay digest failed:', err)
       // Failures are not cached, so the next request tries again.
-      const status = err instanceof KeyProblem ? err.kind : 'error'
+      const status = err instanceof AiUnavailable ? err.kind : 'error'
       return { digest: null, sessions: sessions.length, status, error: String(err) }
     }
   })()

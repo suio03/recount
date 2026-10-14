@@ -31,6 +31,11 @@ Status: in daily development, replacing a Plausible CE fork. See
   - *Patterns:* friction, intent and paths shared by several summarized sessions, each backed
     by the sessions it rests on.
 
+Every model call is logged with its tokens and estimated cost. **Settings → Usage** shows each
+site's pageviews, recordings, AI calls and AI cost per month, and today's spend against the
+daily budget (`AI_DAILY_BUDGET_USD`). Only admins can ask for a reading or patterns to be
+rewritten.
+
 A wiki or reference site usually needs none of the AI part. Leave it off and the dashboard still
 lists what changed, computed without a model call.
 
@@ -78,6 +83,7 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 | `READING_MODEL` | `claude-sonnet-5-5` | Model for readings and cross-session patterns |
 | `REPLAY_MODEL` | `claude-haiku-5-5` | Model for single-session summaries |
 | `REPLAY_SUMMARIES_PER_DAY` | `50` | Session summaries per site per day (UTC); `0` turns the job off |
+| `AI_DAILY_BUDGET_USD` | `5` | What each team may spend on model calls per day (UTC). Past it, readings, summaries and patterns wait for the next day and cached ones stay; `0` stops all calls |
 | `TRUST_CF_HEADERS` | `false` | Take the visitor's address and country from Cloudflare's headers. Set it only when Cloudflare proxies every request; otherwise the address comes from `X-Forwarded-For` and there is no country |
 
 ## Adding a site

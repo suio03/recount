@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { semanticsFor } from '@recount/sites'
 import { and, eq, gt } from 'drizzle-orm'
-import { KeyProblem } from '../ai/claude'
+import { AiUnavailable } from '../ai/claude'
+import { withinBudget } from '../ai/usage'
 import { db } from '../db/postgres'
 import { readings } from '../db/schema'
 import { env } from '../env'
@@ -18,9 +19,9 @@ export interface ReadingResponse {
   reading: Reading | null
   /**
    * Why there is no reading: AI analysis is off for the site, no API key, a key the API
-   * refused, no credit left, or another failure of the model call.
+   * refused, no credit left, today's AI budget spent, or another failure of the model call.
    */
-  status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'error'
+  status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'over_budget' | 'error'
   error?: string
 }
 
@@ -53,7 +54,8 @@ export async function readingFor(scope: Scope, { refresh = false } = {}): Promis
   }
 
   const key = cacheKey(scope)
-  if (!refresh) {
+  // Past today's budget a refresh keeps the cached copy rather than replacing it with nothing.
+  if (!refresh || !(await withinBudget(scope.site.orgId))) {
     const cached = await db.query.readings.findFirst({
       where: and(eq(readings.key, key), gt(readings.createdAt, new Date(Date.now() - TTL_MS))),
     })
@@ -65,7 +67,7 @@ export async function readingFor(scope: Scope, { refresh = false } = {}): Promis
   const run = (async (): Promise<ReadingResponse> => {
     const findings = await detectChanges(scope, semantics)
     try {
-      const reading = await writeReading(scope.site.domain, scope.range, findings, semantics)
+      const reading = await writeReading(scope.site, scope.range, findings, semantics)
       const body: ReadingResponse = { findings, reading, status: 'ok' }
       await db
         .insert(readings)
@@ -75,7 +77,7 @@ export async function readingFor(scope: Scope, { refresh = false } = {}): Promis
     } catch (err) {
       console.error('reading failed:', err)
       // Failures are not cached, so the next request tries again.
-      const status = err instanceof KeyProblem ? err.kind : 'error'
+      const status = err instanceof AiUnavailable ? err.kind : 'error'
       return { findings, reading: null, status, error: String(err) }
     }
   })()

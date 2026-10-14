@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   customType,
   date,
@@ -145,6 +146,23 @@ export const replaySummaries = pgTable(
   (t) => [primaryKey({ columns: [t.siteId, t.sessionId] })],
 )
 
+/** One model call, with its tokens and cost in millionths of a US dollar. */
+export const aiUsage = pgTable('ai_usage', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => orgs.id, { onDelete: 'cascade' }),
+  siteId: uuid('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  /** What the call was for: a reading, a session summary or a patterns digest. */
+  kind: text('kind').$type<AiKind>().notNull(),
+  model: text('model').notNull(),
+  inputTokens: integer('input_tokens').notNull(),
+  outputTokens: integer('output_tokens').notNull(),
+  costMicros: bigint('cost_micros', { mode: 'number' }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type AiKind = 'reading' | 'summary' | 'digest'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect
