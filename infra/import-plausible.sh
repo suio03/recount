@@ -10,11 +10,12 @@
 # fills in behind them, and a rerun finds nothing older left to copy. Imported rows are
 # cookieless: Plausible's visitor ids are daily hashes. Source and channel are derived again with
 # Recount's rules, so imported and live rows group the same way. Revenue is not copied: Recount
-# syncs payments from the providers itself.
+# syncs payments from the providers itself. Each month goes over as its own insert, which keeps
+# every insert inside one partition and leaves little to merge on a small host.
 #
-# To redo a site, delete its events in Recount first. SITES_ONLY=1 only creates the sites, so the
-# trackers have somewhere to report before the history comes over. New sites get TIMEZONE
-# (default UTC).
+# To redo a site, or one whose import stopped part way, delete its imported (cookieless) events
+# in Recount first. SITES_ONLY=1 only creates the sites, so the trackers have somewhere to report
+# before the history comes over. New sites get TIMEZONE (default UTC).
 set -euo pipefail
 
 : "${PLAUSIBLE_CH:?the Plausible ClickHouse container}"
@@ -48,7 +49,7 @@ recount() {
 # Mirrors parseAcquisition and classifyChannel in apps/api/src/ingest. Character classes stand in
 # for escaped dots, which ClickHouse string literals would swallow.
 select_sql() {
-  local plausible_id=$1 site_id=$2 cutoff=$3
+  local plausible_id=$1 site_id=$2 from=$3 to=$4
   cat <<SQL
 WITH
   lower(replaceRegexpOne(ref, '^(?:[a-zA-Z]+://)?(?:www[.])?([^/:?#]*).*$', '\\\\1')) AS ref_host,
@@ -106,7 +107,8 @@ FROM (
   -- Renamed so the output columns above cannot shadow them.
   SELECT *, timestamp AS ts, referrer AS ref
   FROM plausible_events_db.events_v2
-  WHERE site_id = $plausible_id AND timestamp < toDateTime('$cutoff', 'UTC')
+  WHERE site_id = $plausible_id
+    AND timestamp >= toDateTime('$from', 'UTC') AND timestamp < toDateTime('$to', 'UTC')
 )
 SQL
 }
@@ -135,10 +137,18 @@ for entry in "$@"; do
   fi
 
   before=$(recount -q "SELECT count() FROM events WHERE site_id = '$site_id'")
-  select_sql "$plausible_id" "$site_id" "$cutoff" |
-    plausible --format Native --max_block_size 65536 |
-    recount --min_insert_block_size_rows 200000 --min_insert_block_size_bytes 67108864 \
-      -q 'INSERT INTO events FORMAT Native'
+  # Month starts up to the cutoff, each paired with the end of its slice.
+  plausible -q "SELECT toString(toDateTime(m, 'UTC')),
+      toString(least(toDateTime(m + INTERVAL 1 MONTH, 'UTC'), toDateTime('$cutoff', 'UTC')))
+    FROM (SELECT DISTINCT toStartOfMonth(timestamp, 'UTC') AS m FROM plausible_events_db.events_v2
+          WHERE site_id = $plausible_id AND timestamp < toDateTime('$cutoff', 'UTC'))
+    ORDER BY m FORMAT TSV" |
+  while IFS=$'\t' read -r from to; do
+    select_sql "$plausible_id" "$site_id" "$from" "$to" |
+      plausible --format Native --max_block_size 16384 --max_threads 2 |
+      recount --min_insert_block_size_rows 100000 --min_insert_block_size_bytes 33554432 \
+        --max_insert_threads 1 -q 'INSERT INTO events FORMAT Native'
+  done
   after=$(recount -q "SELECT count() FROM events WHERE site_id = '$site_id'")
   echo "$domain: $((after - before)) of $expected events before $cutoff"
 done
