@@ -1,10 +1,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { getConnInfo } from '@hono/node-server/conninfo'
 import { and, eq, gt, lt, sql } from 'drizzle-orm'
 import type { Context, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { clientIp } from './client-ip'
 import { db } from './db/postgres'
 import { apiKeys, memberships, orgs, type Role, type User, userSessions, users } from './db/schema'
+import { env } from './env'
 
 /**
  * Who is calling the private API: a person, through the session cookie the dashboard gets at
@@ -15,6 +17,8 @@ export type Principal = { kind: 'user'; user: User } | { kind: 'key'; orgId: str
 export type AuthEnv = { Variables: { principal: Principal } }
 
 const COOKIE = 'rc_session'
+/** Set at sign-out while DEV_AUTO_LOGIN is on, so the sign-in form shows until the next sign-in. */
+const SIGNED_OUT = 'rc_signed_out'
 const SESSION_DAYS = 30
 const KEY_PREFIX = 'rc_'
 
@@ -110,6 +114,38 @@ async function fromSession(token: string): Promise<Principal | undefined> {
   return row && { kind: 'user', user: row.user }
 }
 
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
+
+/**
+ * The account DEV_AUTO_LOGIN signs in, for a request from `address`. Only outside production and
+ * only from this machine: the socket's own address, since a forwarded one can be anything.
+ */
+export function autoLoginEmail(
+  address: string | undefined,
+  email = env.DEV_AUTO_LOGIN,
+  nodeEnv = process.env.NODE_ENV,
+) {
+  if (!email || nodeEnv === 'production' || !address || !LOOPBACK.has(address)) return undefined
+  return email.toLowerCase()
+}
+
+/** Starts a session for the DEV_AUTO_LOGIN account when it applies to this request. */
+async function autoLogin(c: Context): Promise<Principal | undefined> {
+  if (!env.DEV_AUTO_LOGIN || getCookie(c, SIGNED_OUT) !== undefined) return undefined
+  let address: string | undefined
+  try {
+    address = getConnInfo(c).remote.address
+  } catch {
+    return undefined
+  }
+  const email = autoLoginEmail(address)
+  if (!email) return undefined
+  const user = await db.query.users.findFirst({ where: eq(sql`lower(${users.email})`, email) })
+  if (!user) return undefined
+  await startSession(c, user.id)
+  return { kind: 'user', user }
+}
+
 type Resolved = Principal | 'missing' | 'wrong' | 'blocked'
 
 async function resolve(c: Context): Promise<Resolved> {
@@ -120,12 +156,12 @@ async function resolve(c: Context): Promise<Resolved> {
     return (secret.startsWith(KEY_PREFIX) && (await fromKey(secret))) || 'wrong'
   }
   const cookie = getCookie(c, COOKIE)
-  if (cookie === undefined) return 'missing'
+  if (cookie === undefined) return (await autoLogin(c)) ?? 'missing'
   const principal = await fromSession(cookie)
   if (principal) return principal
   // Expired or signed out elsewhere: drop it so the browser stops sending it.
   deleteCookie(c, COOKIE, { path: '/' })
-  return 'wrong'
+  return (await autoLogin(c)) ?? 'wrong'
 }
 
 export const requireAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
@@ -153,6 +189,7 @@ export async function startSession(c: Context, userId: string) {
     path: '/',
     maxAge: SESSION_DAYS * 86_400,
   })
+  deleteCookie(c, SIGNED_OUT, { path: '/' })
 }
 
 export async function endSession(c: Context) {
@@ -160,6 +197,8 @@ export async function endSession(c: Context) {
   if (token !== undefined)
     await db.delete(userSessions).where(eq(userSessions.tokenHash, hashToken(token)))
   deleteCookie(c, COOKIE, { path: '/' })
+  if (env.DEV_AUTO_LOGIN)
+    setCookie(c, SIGNED_OUT, '1', { httpOnly: true, sameSite: 'Strict', path: '/' })
 }
 
 /** Signs `userId` out everywhere except the browser making this request. */

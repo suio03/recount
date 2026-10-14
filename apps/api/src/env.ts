@@ -26,6 +26,11 @@ const Env = z.object({
    * dashboard. Any long random string; changing it makes the stored keys unreadable.
    */
   ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY needs at least 32 characters').optional(),
+  /**
+   * Development only: browsers on this machine are signed in as this account without a password.
+   * Ignored when NODE_ENV is production and for requests from any other machine.
+   */
+  DEV_AUTO_LOGIN: z.email().optional(),
   /** Directory holding the built tracker, served at /js/script.js. */
   TRACKER_DIST: z
     .string()

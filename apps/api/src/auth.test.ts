@@ -80,3 +80,16 @@ describe('setup code', () => {
     expect(auth.hashToken(key).equals(hash)).toBe(true)
   })
 })
+
+describe('dev auto sign-in', () => {
+  it('applies only outside production, to requests from this machine', () => {
+    expect(auth.autoLoginEmail('127.0.0.1', 'Owner@Test.local', 'development')).toBe(
+      'owner@test.local',
+    )
+    expect(auth.autoLoginEmail('::1', 'owner@test.local', undefined)).toBe('owner@test.local')
+    expect(auth.autoLoginEmail('127.0.0.1', 'owner@test.local', 'production')).toBeUndefined()
+    expect(auth.autoLoginEmail('192.168.1.5', 'owner@test.local', 'development')).toBeUndefined()
+    expect(auth.autoLoginEmail(undefined, 'owner@test.local', 'development')).toBeUndefined()
+    expect(auth.autoLoginEmail('127.0.0.1', undefined, 'development')).toBeUndefined()
+  })
+})

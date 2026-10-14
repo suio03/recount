@@ -76,6 +76,7 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 | Variable | Default | What |
 |---|---|---|
+To skip the sign-in from then on, put that account's email in `DEV_AUTO_LOGIN` in `.env`.
 | `DATABASE_URL`, `CLICKHOUSE_*` | see `.env.example` | Database connections |
 | `PUBLIC_URL` | `http://localhost:8787` | Where the API is reached; the dev dashboard proxies to it |
 | `ENCRYPTION_KEY` | unset | Encrypts payment provider keys entered in the dashboard. Any random string of 32+ characters, e.g. `openssl rand -base64 32`. Changing it makes stored keys unreadable |
@@ -91,6 +92,7 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 In the dashboard, pick **Add a site…** in the site menu (with no sites yet, the form is shown
 straight away). The site's settings then show the script tag to paste, built from the options
 below, and say when the first pageview arrives. **Site settings** also changes the name,
+| `DEV_AUTO_LOGIN` | unset | Development only: browsers on the same machine are signed in as this account without a password. Ignored when `NODE_ENV` is `production` (as in the image) and for requests from other machines. Signing out shows the sign-in form until the next sign-in |
 timezone and currency, and deletes a site with everything recorded for it. **Public link**
 there gives a read-only dashboard anyone can open without signing in, at `/share/<token>`; it
 shows the numbers, revenue included, but not the AI reading or recordings. A new link stops the
