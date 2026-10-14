@@ -4,10 +4,15 @@ import { db, sql } from './db/postgres'
 import { orgs, readings, sites } from './db/schema'
 import { type PaymentInput, recordPayments } from './revenue/record'
 
-// Fills a demo site with 60 days of synthetic traffic so the dashboard can be developed without
-// real data. Safe to rerun: it replaces the demo site's events and touches no other site.
+// Fills two demo sites with the same 60 days of synthetic traffic so the dashboard can be
+// developed without real data. `demo` also sends the custom events a site would add by hand;
+// `autocapture` has only what the script records by itself: pageviews and element clicks. Safe to
+// rerun: it replaces the demo sites' events and touches no other site.
 
-const DOMAIN = 'demo.recount.localhost'
+const DEMOS = [
+  { domain: 'demo.recount.localhost', name: 'Demo', customEvents: true },
+  { domain: 'autocapture.recount.localhost', name: 'Autocapture demo', customEvents: false },
+]
 const DAYS = 60
 
 // mulberry32: a small deterministic generator, so reruns produce the same demo data.
@@ -55,7 +60,52 @@ const PAGES: Array<[string, number]> = [
   ['/tools/elevenlabs', 4],
   ['/category/writing', 4],
   ['/submit', 2],
+  ['/pricing', 2],
 ]
+
+const TOOLS: Record<string, string> = {
+  cursor: 'Cursor',
+  runway: 'Runway',
+  elevenlabs: 'ElevenLabs',
+}
+
+interface Click {
+  element_tag: string
+  element_text: string
+  element_section: string
+  element_href: string
+}
+
+const link = (text: string, section: string, href: string): Click => ({
+  element_tag: 'a',
+  element_text: text,
+  element_section: section,
+  element_href: href,
+})
+const button = (text: string, section: string): Click => ({
+  element_tag: 'button',
+  element_text: text,
+  element_section: section,
+  element_href: '',
+})
+
+/** The link a visitor on `from` clicks to reach `to`, as the script records it. */
+function linkTo(from: string, to: string, origin: string): Click {
+  const href = `${origin}${to}`
+  const tool = to.match(/^\/tools\/(.+)/)?.[1]
+  if (tool) {
+    const name = TOOLS[tool] ?? tool
+    if (from === '/') return link(name, 'Popular tools', href)
+    if (from.startsWith('/category/')) return link(name, 'Tools in this category', href)
+    return link(name, 'Similar tools', href)
+  }
+  if (to.startsWith('/compare/')) return link('Cursor vs Windsurf', 'Compare', href)
+  if (to === '/category/video') return link('Video', 'nav', href)
+  if (to === '/category/writing') return link('Writing', 'nav', href)
+  if (to === '/submit') return link('Submit a tool', 'header', href)
+  if (to === '/pricing') return link('Pricing', 'header', href)
+  return link('AI Tools Directory', 'header', href)
+}
 const COUNTRIES: Array<[string, number]> = [
   ['US', 32],
   ['IN', 13],
@@ -75,15 +125,12 @@ const DEVICES: Array<[[string, string, string], number]> = [
   [['Tablet', 'Mobile Safari', 'iOS'], 3],
 ]
 
-async function main() {
-  // The first org, or a new one that the first account takes over at setup.
-  const org =
-    (await db.query.orgs.findFirst({ orderBy: (o, { asc }) => asc(o.createdAt) })) ??
-    (await db.insert(orgs).values({ name: 'My sites' }).returning())[0]
-  if (!org) throw new Error('no org for the demo site')
+async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
+  const { domain: DOMAIN, customEvents } = demo
+  seed = 42
   await db
     .insert(sites)
-    .values({ orgId: org.id, domain: DOMAIN, name: 'Demo', ai: true })
+    .values({ orgId, domain: DOMAIN, name: demo.name, ai: true })
     .onConflictDoNothing()
   const site = await db.query.sites.findFirst({ where: (s, { eq }) => eq(s.domain, DOMAIN) })
   if (!site) throw new Error('demo site missing')
@@ -132,27 +179,50 @@ async function main() {
       }
       let t = dayStart + random() * 86_000_000
       const at = () => new Date((t += 5_000 + random() * 60_000)).toISOString().replace('Z', '')
+      const origin = `https://${DOMAIN}`
+      // Time moves on either way, so both demos get the same visits.
+      const event = (name: string, pathname: string) => {
+        const timestamp = at()
+        if (customEvents) rows.push({ ...session, timestamp, name, pathname })
+      }
+      // A click on an element marked with data-rc-event carries that name instead of `click`.
+      const click = (pathname: string, element: Click, name = 'click') =>
+        rows.push({ ...session, timestamp: at(), name, pathname, ...element })
       const views = random() < 0.42 ? 1 : 1 + Math.floor(random() * 5)
+      let pathname = ''
       for (let v = 0; v < views; v++) {
-        const pathname =
-          v === 0 && source.channel === 'AI Assistant' ? '/tools/cursor' : pick(PAGES)
+        const next = v === 0 && source.channel === 'AI Assistant' ? '/tools/cursor' : pick(PAGES)
+        if (v > 0) click(pathname, linkTo(pathname, next, origin))
+        pathname = next
         rows.push({ ...session, timestamp: at(), name: 'pageview', pathname })
-        if (views > 1 && random() < 0.35)
-          rows.push({ ...session, timestamp: at(), name: 'Tool Open', pathname })
-        if (views > 1 && random() < 0.15)
-          rows.push({ ...session, timestamp: at(), name: 'Search', pathname })
+        if (views > 1 && random() < 0.35) event('Tool Open', pathname)
+        if (views > 1 && random() < 0.15) event('Search', pathname)
+        if (random() < 0.03) click(pathname, link('Log in', 'header', `${origin}/login`))
       }
       if (views > 1 && random() < 0.45) {
-        rows.push({
-          ...session,
-          timestamp: at(),
-          name: 'Outbound Click',
-          pathname: '/tools/cursor',
-        })
-      }
+        // The visitor leaves to the tool's own site.
+        const tool = pathname.match(/^\/tools\/(.+)/)?.[1] ?? 'cursor'
+        if (!pathname.startsWith('/tools/')) {
+          click(pathname, linkTo(pathname, `/tools/${tool}`, origin))
+          pathname = `/tools/${tool}`
+          rows.push({ ...session, timestamp: at(), name: 'pageview', pathname })
+        }
+        click(
+          pathname,
+          link(`Visit ${TOOLS[tool] ?? tool}`, 'Tool profile', `https://${tool}.com/?ref=ordalin`),
+        )
+        event('Outbound Click', pathname)
+      } else if (random() < 0.02)
+        click(pathname, link('Follow us', 'footer', 'https://x.com/ordalin'))
       const ids = { visitorId: BigInt(session.visitor_id), sessionId: BigInt(session.session_id) }
       if (random() < 0.01) {
-        rows.push({ ...session, timestamp: at(), name: 'Submission Sent', pathname: '/submit' })
+        if (pathname !== '/submit') {
+          click(pathname, linkTo(pathname, '/submit', origin))
+          rows.push({ ...session, timestamp: at(), name: 'pageview', pathname: '/submit' })
+        }
+        click('/submit', button('Submit tool', 'Submit form'))
+        rows.push({ ...session, timestamp: at(), name: 'pageview', pathname: '/submit/thanks' })
+        event('Submission Sent', '/submit/thanks')
         if (random() < 0.6) {
           const customerId = `cus_${id()}`
           at()
@@ -165,6 +235,11 @@ async function main() {
         }
       }
       if (views > 1 && random() < (PRO_RATE[source.channel] ?? 0.004)) {
+        if (pathname !== '/pricing') {
+          click(pathname, linkTo(pathname, '/pricing', origin))
+          rows.push({ ...session, timestamp: at(), name: 'pageview', pathname: '/pricing' })
+        }
+        click('/pricing', button('Choose Pro', 'Pricing'), customEvents ? 'Choose Pro' : 'click')
         const customerId = `cus_${id()}`
         at()
         pay({ ...ids, customerId, kind: 'new', amount: PRO, timestamp: new Date(t) })
@@ -181,6 +256,15 @@ async function main() {
   console.log(
     `seeded ${rows.length} events and ${payments.length} payments for ${DOMAIN} (${site.id})`,
   )
+}
+
+async function main() {
+  // The first org, or a new one that the first account takes over at setup.
+  const org =
+    (await db.query.orgs.findFirst({ orderBy: (o, { asc }) => asc(o.createdAt) })) ??
+    (await db.insert(orgs).values({ name: 'My sites' }).returning())[0]
+  if (!org) throw new Error('no org for the demo sites')
+  for (const demo of DEMOS) await seedSite(org.id, demo)
   await sql.end()
   await clickhouse.close()
 }

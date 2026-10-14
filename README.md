@@ -71,7 +71,7 @@ cp .env.example .env
 pnpm db:up                      # PostgreSQL :5442, ClickHouse :8133
 pnpm migrate
 pnpm --filter @recount/tracker build
-pnpm seed                       # optional: a demo site with sample traffic
+pnpm seed                       # optional: two demo sites with sample traffic
 pnpm dev                        # API :8787, web :5173
 ```
 
@@ -165,6 +165,18 @@ the site's code:
 Rules apply when stats are read, so a goal defined today counts past visits too. A funnel lists
 2 to 8 steps, each a goal, a custom event or a page, and counts the visitors who reach each step
 in order within one visit.
+
+The AI layer can draft them instead. It lists what the site's last 30 days hold (pages, clicked
+elements, custom events, what paying visits did), and the model proposes the conversions, the
+funnels leading to them and the tracking gaps the data cannot cover, each with the evidence it
+rests on. Code drops any part that is not a valid rule, cites nothing, quotes a number the data
+does not contain, or matches no visitor; every count comes from a query. A site needs 100
+visitors in the range. For now the draft is printed, not saved:
+
+```sh
+pnpm --filter @recount/api semantics inventory <domain>
+pnpm --filter @recount/api semantics draft <domain>
+```
 
 ### Revenue
 

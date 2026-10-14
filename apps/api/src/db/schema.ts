@@ -189,7 +189,7 @@ export const aiUsage = pgTable('ai_usage', {
     .notNull()
     .references(() => orgs.id, { onDelete: 'cascade' }),
   siteId: uuid('site_id').references(() => sites.id, { onDelete: 'set null' }),
-  /** What the call was for: a reading, a session summary or a patterns digest. */
+  /** What the call was for: a reading, a session summary, a patterns digest or site semantics. */
   kind: text('kind').$type<AiKind>().notNull(),
   model: text('model').notNull(),
   inputTokens: integer('input_tokens').notNull(),
@@ -198,7 +198,7 @@ export const aiUsage = pgTable('ai_usage', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
-export type AiKind = 'reading' | 'summary' | 'digest'
+export type AiKind = 'reading' | 'summary' | 'digest' | 'semantics'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect

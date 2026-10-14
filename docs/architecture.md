@@ -127,6 +127,10 @@ Next:
    overrides. Built-in questions (how is traffic, how is conversion, which channel brings the
    best visitors) are fixed queries the model explains, stating the definition used. Data the
    browser cannot see becomes a tracking gap: what is missing, why, and the line of code to add.
+   Started: the inventory, the draft and its checks, run from the `semantics` CLI. The seed's
+   `autocapture` demo has the same traffic as `demo` without custom events, to show what a draft
+   finds from pageviews and clicks alone. Next: storing drafts, the schedule, applying them, the
+   dashboard view, then the questions.
 2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
    AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
    through the id passed from the browser, as with `recount.ids()`; an MCP server with
