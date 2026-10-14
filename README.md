@@ -31,7 +31,7 @@ Status: in daily development, replacing a Plausible CE fork. See
   - *Patterns:* friction, intent and paths shared by several summarized sessions, each backed
     by the sessions it rests on.
 
-Every model call is logged with its tokens and estimated cost. **Settings → Usage** shows each
+Every model call is logged with its tokens and estimated cost. **Account → Usage** shows each
 site's pageviews, recordings, AI calls and AI cost per month, and today's spend against the
 daily budget (`AI_DAILY_BUDGET_USD`). Only admins can ask for a reading or patterns to be
 rewritten.
@@ -96,7 +96,7 @@ there gives a read-only dashboard anyone can open without signing in, at `/share
 shows the numbers, revenue included, but not the AI reading or recordings. A new link stops the
 old one.
 
-Scripts can do the same with an API key from Settings:
+Scripts can do the same with an API key from Account → API keys:
 
 ```sh
 curl -H "Authorization: Bearer $RECOUNT_KEY" -H 'content-type: application/json' \
@@ -207,7 +207,7 @@ image and stops there.
 
 People sign in with email and password. Each team (org) owns sites and gives its members a role:
 viewers see the dashboards, admins also manage sites, members, invites and API keys, owners also
-give and take away ownership. Settings → Team creates an invite link to send by hand; there is no
+give and take away ownership. Account → Team creates an invite link to send by hand; there is no
 email sending yet. Someone who forgot their password asks whoever runs the server, who sets a new
 one and signs that person out everywhere:
 

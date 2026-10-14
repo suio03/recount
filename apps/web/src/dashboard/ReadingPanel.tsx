@@ -212,7 +212,7 @@ function Body({
       {data.status === 'over_budget' && (
         <p className="m-0 text-muted">
           Today&apos;s AI budget is spent, so these changes are explained again tomorrow (UTC). The
-          day&apos;s spend is under Settings → Usage.
+          day&apos;s spend is under Account → Usage.
         </p>
       )}
       {data.status === 'error' && (

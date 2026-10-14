@@ -100,7 +100,7 @@ Done:
 10. **Site management in the dashboard**: adding and deleting sites, the install snippet with a
     first-event check, site settings, connecting Paddle with an encrypted key, public links.
 11. **Usage and AI cost control**: a log of every model call with tokens and cost, a daily AI
-    budget per org, admin-only rewrites, monthly usage per site in Settings.
+    budget per org, admin-only rewrites, monthly usage per site under Account.
 12. **Goals and funnels**: goals defined in site settings as a page visit or a click rule
     (element text or label, section, page, link address), usable as filters; funnels of goals,
     custom events and pages, counted in order within one visit, on the dashboard and public links.

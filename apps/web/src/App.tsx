@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, LogOut, Settings as SettingsIcon, SlidersHorizontal } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, CircleUser, LogOut, SlidersHorizontal } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   api,
@@ -122,8 +122,8 @@ function SignedIn({ me }: { me: Me }) {
   // A new site opens on its install snippet.
   const openCreated = (created: Site) => state.setDomain(created.domain, 'site')
   return (
-    <div className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-5 pb-12 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
+    <>
+      <AppHeader>
         <div className="flex flex-wrap items-center gap-4">
           <button
             type="button"
@@ -132,13 +132,9 @@ function SignedIn({ me }: { me: Me }) {
           >
             Recount
           </button>
-          <span className="h-5 w-px bg-line" aria-hidden="true" />
-          {settings || view === 'new-site' ? (
-            <span className="text-title font-semibold tracking-[-0.01em]">
-              {settings ? 'Settings' : 'New site'}
-            </span>
-          ) : (
+          {!settings && view !== 'new-site' && (
             <>
+              <span className="h-5 w-px bg-line" aria-hidden="true" />
               {sites.data && sites.data.length > 0 && site && (
                 <SitePicker
                   sites={sites.data}
@@ -153,7 +149,7 @@ function SignedIn({ me }: { me: Me }) {
                   type="button"
                   onClick={() => state.setView(view === 'site' ? 'dashboard' : 'site')}
                   aria-pressed={view === 'site'}
-                  title="Install, timezone, currency, delete"
+                  title="This site: install, goals and funnels, revenue, public link, delete"
                   className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-2 text-label font-medium text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
                 >
                   <SlidersHorizontal className="size-4" strokeWidth={1.75} aria-hidden="true" />
@@ -177,42 +173,79 @@ function SignedIn({ me }: { me: Me }) {
             <button
               type="button"
               onClick={() => state.setView(settings ? 'dashboard' : 'settings')}
-              aria-label="Settings"
+              aria-label="Account"
               aria-pressed={settings}
-              title="Account, team and API keys"
+              title="Your account: profile, team, API keys and usage"
               className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
             >
-              <SettingsIcon className="size-4" strokeWidth={1.75} />
+              <CircleUser className="size-4" strokeWidth={1.75} />
             </button>
           )}
           <SignOut />
         </div>
-      </header>
+      </AppHeader>
 
-      {settings && <Settings me={me} />}
-      {view === 'new-site' && <NewSite me={me} onCreated={openCreated} />}
-      {view === 'site' && site && (
-        <SiteSettings site={site} onDeleted={() => state.setDomain(undefined, 'dashboard')} />
+      {!dashboard && (
+        <main className="mx-auto flex max-w-3xl flex-col gap-3 px-4 pt-6 pb-12 sm:box-content sm:px-6">
+          {settings && (
+            <>
+              <PageTitle title="Account" detail="Your profile, team, API keys and usage" />
+              <Settings me={me} />
+            </>
+          )}
+          {view === 'new-site' && <NewSite me={me} onCreated={openCreated} />}
+          {view === 'site' && site && (
+            <>
+              <PageTitle title="Site settings" detail={site.domain} />
+              <SiteSettings site={site} onDeleted={() => state.setDomain(undefined, 'dashboard')} />
+            </>
+          )}
+        </main>
       )}
-      {dashboard && <SitesView sites={sites} me={me} canAdd={canAdd} onCreated={openCreated} />}
       {dashboard && (
-        <FilterBar
-          filters={state.filters}
-          onRemove={state.removeFilter}
-          onClear={state.clearFilters}
-        />
+        <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-4 pb-12 sm:px-6">
+          <SitesView sites={sites} me={me} canAdd={canAdd} onCreated={openCreated} />
+          <FilterBar
+            filters={state.filters}
+            onRemove={state.removeFilter}
+            onClear={state.clearFilters}
+          />
+          {site && range && (
+            <Dashboard
+              key={site.id}
+              site={site}
+              range={range}
+              realtime={realtime}
+              filters={state.filters}
+              onFilter={state.setFilter}
+              onShow={state.replaceFilters}
+            />
+          )}
+        </main>
       )}
-      {dashboard && site && range && (
-        <Dashboard
-          key={site.id}
-          site={site}
-          range={range}
-          realtime={realtime}
-          filters={state.filters}
-          onFilter={state.setFilter}
-          onShow={state.replaceFilters}
-        />
-      )}
+    </>
+  )
+}
+
+/**
+ * The bar across the top of every signed-in and shared page, kept in view while scrolling so the
+ * site, period and account stay at hand.
+ */
+function AppHeader({ children }: { children: ReactNode }) {
+  return (
+    <header className="sticky top-0 z-30 border-line border-b bg-canvas">
+      <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        {children}
+      </div>
+    </header>
+  )
+}
+
+function PageTitle({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="grid gap-0.5 pb-1">
+      <h1 className="m-0 text-title font-semibold tracking-[-0.01em]">{title}</h1>
+      <p className="m-0 text-body text-muted">{detail}</p>
     </div>
   )
 }
@@ -236,8 +269,8 @@ function Shared({ token }: { token: string }) {
   const { domain, timezone, firstEvent } = site.data
   const range = resolve(state.period, timezone, firstEvent, now)
   return (
-    <div className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-5 pb-12 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
+    <>
+      <AppHeader>
         <div className="flex flex-wrap items-center gap-4">
           <span className="text-title font-semibold tracking-[-0.01em]">{domain}</span>
           <span className="text-label text-muted">Shared dashboard</span>
@@ -249,31 +282,33 @@ function Shared({ token }: { token: string }) {
           firstEvent={firstEvent}
           onChange={state.setPeriod}
         />
-      </header>
-      <FilterBar
-        filters={state.filters}
-        onRemove={state.removeFilter}
-        onClear={state.clearFilters}
-      />
-      <Dashboard
-        site={{ id: token, timezone, ai: false, role: 'viewer' }}
-        share={token}
-        range={range}
-        realtime={realtime}
-        filters={state.filters}
-        onFilter={state.setFilter}
-        onShow={state.replaceFilters}
-      />
-      <footer className="pt-4 text-center text-label text-muted">
-        Counted by{' '}
-        <a
-          href="https://github.com/suio03/recount"
-          className="text-ink underline-offset-2 hover:underline"
-        >
-          Recount
-        </a>
-      </footer>
-    </div>
+      </AppHeader>
+      <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-4 pb-12 sm:px-6">
+        <FilterBar
+          filters={state.filters}
+          onRemove={state.removeFilter}
+          onClear={state.clearFilters}
+        />
+        <Dashboard
+          site={{ id: token, timezone, ai: false, role: 'viewer' }}
+          share={token}
+          range={range}
+          realtime={realtime}
+          filters={state.filters}
+          onFilter={state.setFilter}
+          onShow={state.replaceFilters}
+        />
+        <footer className="pt-4 text-center text-label text-muted">
+          Counted by{' '}
+          <a
+            href="https://github.com/suio03/recount"
+            className="text-ink underline-offset-2 hover:underline"
+          >
+            Recount
+          </a>
+        </footer>
+      </main>
+    </>
   )
 }
 

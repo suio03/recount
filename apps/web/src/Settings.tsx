@@ -65,7 +65,7 @@ function Account({ user }: { user: User }) {
     },
   })
   return (
-    <Panel title="Account">
+    <Panel title="Profile">
       <p className="m-0 text-body text-muted">{user.email}</p>
       <form
         className="flex flex-wrap items-end gap-2"
