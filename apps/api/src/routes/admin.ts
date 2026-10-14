@@ -1,50 +1,68 @@
-import { eq } from 'drizzle-orm'
-import { Hono } from 'hono'
+import { eq, inArray } from 'drizzle-orm'
+import { type Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
-import { requireAdmin, signIn, signOut } from '../auth'
+import { type AuthEnv, atLeast, orgsOf, type Principal, requireAuth, roleIn } from '../auth'
 import { db } from '../db/postgres'
-import { sites } from '../db/schema'
+import { type Role, type Site, sites } from '../db/schema'
 import { playable, recordingOf } from '../replay/sessions'
 import { rows } from '../stats/queries'
 import { statsRoutes } from './stats'
 
-export const adminRoutes = new Hono()
+export type SiteEnv = AuthEnv & { Variables: { site: Site; role: Role } }
 
-adminRoutes.use('/api/sites/*', requireAdmin)
-adminRoutes.use('/api/sites', requireAdmin)
+export const adminRoutes = new Hono<SiteEnv>()
 
-/** Trades ADMIN_TOKEN for the dashboard's session cookie. */
-adminRoutes.post(
-  '/api/login',
-  bodyLimit({ maxSize: 1024, onError: (c) => c.json({ error: 'too large' }, 413) }),
-  async (c) => {
-    const body = await c.req.json().catch(() => null)
-    const token = typeof body?.token === 'string' ? body.token : ''
-    const result = signIn(c, token)
-    if (result === 'blocked') return c.json({ error: 'too many attempts' }, 429)
-    return result === 'ok' ? c.json({ ok: true }) : c.json({ error: 'wrong token' }, 401)
-  },
+adminRoutes.use('/api/sites', requireAuth)
+adminRoutes.use('/api/sites/*', requireAuth)
+adminRoutes.use(
+  '/api/sites',
+  bodyLimit({ maxSize: 4096, onError: (c) => c.json({ error: 'too large' }, 413) }),
 )
 
-adminRoutes.post('/api/logout', (c) => {
-  signOut(c)
-  return c.json({ ok: true })
+/** A site the caller can see, and the caller's role in the org that owns it. */
+adminRoutes.use('/api/sites/:id/*', async (c, next) => {
+  const id = c.req.param('id') ?? ''
+  if (!z.uuid().safeParse(id).success) return c.json({ error: 'invalid site' }, 400)
+  const site = await db.query.sites.findFirst({ where: eq(sites.id, id) })
+  const role = site && (await roleIn(c.get('principal'), site.orgId))
+  // A site in someone else's org is reported missing rather than forbidden.
+  if (!site || !role) return c.json({ error: 'not found' }, 404)
+  c.set('site', site)
+  c.set('role', role)
+  await next()
 })
 
-/** Every site, with when its first event happened (null before any), for the "All time" range. */
+/**
+ * Every site the caller can see, with its role there and when its first event happened (null
+ * before any), for the "All time" range.
+ */
 adminRoutes.get('/api/sites', async (c) => {
-  const [all, firsts] = await Promise.all([
-    db.select().from(sites).orderBy(sites.domain),
-    rows<{ site: string; first: string }>(
-      `SELECT toString(site_id) AS site,
-              formatDateTime(min(timestamp), '%Y-%m-%dT%H:%i:%SZ', 'UTC') AS first
-       FROM events GROUP BY site_id`,
-      {},
-    ),
-  ])
+  const orgs = await orgsOf(c.get('principal'))
+  const roles = new Map(orgs.map((o) => [o.id, o.role]))
+  const visible = orgs.length
+    ? await db
+        .select()
+        .from(sites)
+        .where(inArray(sites.orgId, [...roles.keys()]))
+        .orderBy(sites.domain)
+    : []
+  const firsts = visible.length
+    ? await rows<{ site: string; first: string }>(
+        `SELECT toString(site_id) AS site,
+                formatDateTime(min(timestamp), '%Y-%m-%dT%H:%i:%SZ', 'UTC') AS first
+         FROM events WHERE site_id IN {ids:Array(UUID)} GROUP BY site_id`,
+        { ids: visible.map((s) => s.id) },
+      )
+    : []
   const firstBySite = new Map(firsts.map((f) => [f.site, f.first]))
-  return c.json(all.map((s) => ({ ...s, firstEvent: firstBySite.get(s.id) ?? null })))
+  return c.json(
+    visible.map((s) => ({
+      ...s,
+      role: roles.get(s.orgId),
+      firstEvent: firstBySite.get(s.id) ?? null,
+    })),
+  )
 })
 
 const NewSite = z.object({
@@ -56,15 +74,27 @@ const NewSite = z.object({
   name: z.string().min(1).max(100).optional(),
   timezone: z.string().default('UTC'),
   ai: z.boolean().default(false),
+  /** Needed only when the caller administers more than one org. */
+  org: z.uuid().optional(),
 })
+
+/** The org a new site goes to: the one asked for, or the caller's only org it administers. */
+async function targetOrg(principal: Principal, asked: string | undefined) {
+  if (asked) return atLeast(await roleIn(principal, asked), 'admin') ? asked : undefined
+  const mine = (await orgsOf(principal)).filter((o) => atLeast(o.role, 'admin'))
+  return mine.length === 1 ? mine[0]?.id : undefined
+}
 
 adminRoutes.post('/api/sites', async (c) => {
   const parsed = NewSite.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400)
-  const { domain, name, timezone, ai } = parsed.data
+  const { domain, name, timezone, ai, org } = parsed.data
+  const orgId = await targetOrg(c.get('principal'), org)
+  if (!orgId)
+    return c.json({ error: org ? 'not allowed' : 'say which org with "org"' }, org ? 403 : 400)
   const [site] = await db
     .insert(sites)
-    .values({ domain, name: name ?? domain, timezone, ai })
+    .values({ orgId, domain, name: name ?? domain, timezone, ai })
     .onConflictDoNothing()
     .returning()
   return site ? c.json(site, 201) : c.json({ error: 'site exists' }, 409)
@@ -72,14 +102,19 @@ adminRoutes.post('/api/sites', async (c) => {
 
 const SiteChange = z.object({ ai: z.boolean() })
 
+const forbidden = (c: Context) => c.json({ error: 'not allowed' }, 403)
+
 /** Turns the model's reading of a site on or off. */
 adminRoutes.patch('/api/sites/:id', async (c) => {
+  if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
   const parsed = SiteChange.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400)
-  const id = c.req.param('id')
-  if (!z.uuid().safeParse(id).success) return c.json({ error: 'invalid site' }, 400)
-  const [site] = await db.update(sites).set(parsed.data).where(eq(sites.id, id)).returning()
-  return site ? c.json(site) : c.json({ error: 'not found' }, 404)
+  const [site] = await db
+    .update(sites)
+    .set(parsed.data)
+    .where(eq(sites.id, c.get('site').id))
+    .returning()
+  return site ? c.json({ ...site, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
 })
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)
@@ -88,7 +123,7 @@ adminRoutes.route('/api/sites/:id/stats', statsRoutes)
 adminRoutes.get('/api/sites/:id/replays/:session', async (c) => {
   const session = c.req.param('session')
   if (!/^\d{1,20}$/.test(session)) return c.json({ error: 'invalid session' }, 400)
-  const recording = await recordingOf(c.req.param('id'), session).catch(() => undefined)
+  const recording = await recordingOf(c.get('site').id, session).catch(() => undefined)
   const events = recording && playable(recording.loads)
   if (!events?.length) return c.json({ error: 'not found' }, 404)
   return c.json({ events })

@@ -41,12 +41,16 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 
 ## Accounts and tenancy
 
-- `users` sign in with email (magic link or password). `orgs` own sites; `memberships` give a
-  user a role in an org: owner, admin or viewer. `invites` add people by email.
+- `users` sign in with email and password (scrypt). `orgs` own sites; `memberships` give a user a
+  role in an org: owner, admin or viewer. `invites` add people by email through a one-time link
+  that lasts 7 days. Sessions are random tokens in a cookie, stored as hashes.
+- Email (SMTP or Resend) is optional and not built yet; it will send invites, password resets and
+  address checks. Until then invites are links to copy and resets go through the `user` CLI.
 - Every private API call is scoped to the caller's orgs. Events in ClickHouse are already keyed
   by site, so isolation is a check on site ownership, not a new storage layout.
-- API keys replace `ADMIN_TOKEN` for scripts; a self-hosted instance creates its first owner on
-  first start.
+- API keys (`rc_...`) act as an admin of their org and replace `ADMIN_TOKEN` for scripts. The
+  first account is created in the dashboard and needs `ADMIN_TOKEN`, so a stranger cannot claim
+  a fresh install.
 - Third-party secrets (Paddle and Creem keys) are entered in the dashboard and stored encrypted
   with a key from the environment, instead of naming an environment variable per source.
 - A site can have a public read-only dashboard link.
@@ -88,28 +92,30 @@ Done:
    from Plausible.
 8. **Data migration**: history imported from the Plausible fork, one month at a time. Imported
    history is cookieless (daily hashes).
+9. **Accounts and teams**: email and password, orgs with owner, admin and viewer roles, invite
+   links, API keys; the private API is scoped by org.
 
 Next:
 
-1. **Accounts and teams**: users, orgs, roles, invites, API keys; private API scoped by org.
-2. **Site management in the dashboard**: add and delete sites, install snippet and a
+1. **Site management in the dashboard**: add and delete sites, install snippet and a
    first-event check, site settings, replay and AI options, revenue connection with encrypted
    keys, public dashboard links.
-3. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
-4. **Hosted service**: sign-up, plans and Paddle billing, limits, account deletion, landing page,
+2. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
+3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-5. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
-6. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-7. **Attribution**: first touch next to last non-direct touch; Creem sync.
-8. **Questions and digests**: MCP server for asking about the data, periodic email digests.
-9. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+4. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
+5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+6. **Attribution**: first touch next to last non-direct touch; Creem sync.
+7. **Questions and digests**: MCP server for asking about the data, periodic email digests.
+8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
 
 ## Known gaps in the skeleton
 
 - Country comes from Cloudflare's `cf-ipcountry` header, read only with `TRUST_CF_HEADERS`;
   region and city are empty.
 - Cookieless sessions live in API process memory; a restart starts new sessions.
-- One secret (`ADMIN_TOKEN`) guards the private API: scripts send it as a bearer token, and the
-  dashboard trades it for a session cookie. There are no user accounts yet (roadmap item 1).
+- No email yet: invites are links to copy, and forgotten passwords are reset with the `user` CLI.
+- `ADMIN_TOKEN` still works as an all-access bearer token while scripts move to API keys.
+- Viewers can refresh the AI reading, which costs model calls (roadmap item 2 caps spend).
 - Sign-in rate limits live in process memory, which is enough for one instance.
 - SPA pageviews fire on `pushState` before the new page sets its title.

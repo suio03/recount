@@ -118,7 +118,10 @@ for entry in "$@"; do
   plausible_id=${entry%%:*}
   domain=${entry#*:}
 
-  pg -c "INSERT INTO sites (domain, name, timezone) VALUES ('$domain', '$domain', '$TIMEZONE')
+  # New sites go to the first org; on a fresh install that is one the first account takes over.
+  pg -c "INSERT INTO orgs (name) SELECT 'My sites' WHERE NOT EXISTS (SELECT 1 FROM orgs)" >/dev/null
+  pg -c "INSERT INTO sites (org_id, domain, name, timezone)
+         VALUES ((SELECT id FROM orgs ORDER BY created_at LIMIT 1), '$domain', '$domain', '$TIMEZONE')
          ON CONFLICT (domain) DO NOTHING" >/dev/null
   site_id=$(pg -c "SELECT id FROM sites WHERE domain = '$domain'")
   if [ "${SITES_ONLY:-}" = 1 ]; then

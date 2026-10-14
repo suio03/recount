@@ -1,5 +1,58 @@
+export type Role = 'owner' | 'admin' | 'viewer'
+
+export interface User {
+  id: string
+  email: string
+  name: string
+}
+
+export interface Org {
+  id: string
+  name: string
+  role: Role
+}
+
+/** The caller. Scripts with a token have no user; people always do. */
+export interface Me {
+  user: User | null
+  orgs: Org[]
+}
+
+export interface Member extends User {
+  role: Role
+  joinedAt: string
+}
+
+export interface Invite {
+  id: string
+  email: string
+  role: Role
+  expiresAt: string
+}
+
+/** What an invite link is for. */
+export interface InviteInfo {
+  org: string
+  email: string
+  role: Role
+  /** Whether the email already has an account, which then signs in instead of signing up. */
+  hasAccount: boolean
+}
+
+export interface ApiKey {
+  id: string
+  name: string
+  /** The key's first characters, to tell keys apart. */
+  prefix: string
+  lastUsedAt: string | null
+  createdAt: string
+}
+
 export interface Site {
   id: string
+  orgId: string
+  /** The caller's role in the org that owns the site. */
+  role: Role
   domain: string
   name: string
   timezone: string
@@ -175,19 +228,32 @@ export interface ReplayDigest {
   generatedAt?: string
 }
 
-/** A failed request; status 401 means the browser is not signed in. */
+/**
+ * A failed request; status 401 means the browser is not signed in. The message is the API's
+ * `error` text, which is written to be shown.
+ */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
   ) {
-    super(`${status} ${message}`)
+    super(message)
   }
+}
+
+async function failure(res: Response) {
+  const text = await res.text()
+  let message = text || res.statusText
+  try {
+    const error = (JSON.parse(text) as { error?: unknown }).error
+    if (typeof error === 'string') message = error.replace(/^✖ /, '')
+  } catch {}
+  return new ApiError(res.status, message)
 }
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path)
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) throw await failure(res)
   return res.json() as Promise<T>
 }
 
@@ -197,9 +263,14 @@ async function send<T>(method: string, path: string, body: unknown): Promise<T> 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new ApiError(res.status, await res.text())
+  if (!res.ok) throw await failure(res)
   return res.json() as Promise<T>
 }
+
+const del = (path: string) =>
+  fetch(path, { method: 'DELETE' }).then(async (res) => {
+    if (!res.ok) throw await failure(res)
+  })
 
 export type FilterKey = Dimension | 'goal'
 export type Filters = Partial<Record<FilterKey, string>>
@@ -222,8 +293,30 @@ const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) =
 export const api = {
   sites: () => get<Site[]>('/api/sites'),
   setAi: (siteId: string, ai: boolean) => send<Site>('PATCH', `/api/sites/${siteId}`, { ai }),
-  signIn: (token: string) => send<{ ok: true }>('POST', '/api/login', { token }),
+  me: () => get<Me>('/api/me'),
+  setupNeeded: () => get<{ needed: boolean }>('/api/setup'),
+  setup: (input: { adminToken: string; email: string; name: string; password: string }) =>
+    send<User>('POST', '/api/setup', input),
+  signIn: (input: { email: string; password: string }) => send<User>('POST', '/api/login', input),
   signOut: () => send<{ ok: true }>('POST', '/api/logout', {}),
+  updateMe: (change: { name?: string; password?: { current: string; next: string } }) =>
+    send<User>('PATCH', '/api/me', change),
+  invite: (token: string) => get<InviteInfo>(`/api/invites/${encodeURIComponent(token)}`),
+  acceptInvite: (token: string, input: { password: string; name?: string }) =>
+    send<{ orgId: string }>('POST', `/api/invites/${encodeURIComponent(token)}`, input),
+  renameOrg: (orgId: string, name: string) => send<Org>('PATCH', `/api/orgs/${orgId}`, { name }),
+  members: (orgId: string) =>
+    get<{ members: Member[]; invites: Invite[] }>(`/api/orgs/${orgId}/members`),
+  createInvite: (orgId: string, email: string, role: Role) =>
+    send<Invite & { token: string }>('POST', `/api/orgs/${orgId}/invites`, { email, role }),
+  deleteInvite: (orgId: string, id: string) => del(`/api/orgs/${orgId}/invites/${id}`),
+  setRole: (orgId: string, userId: string, role: Role) =>
+    send<{ ok: true }>('PATCH', `/api/orgs/${orgId}/members/${userId}`, { role }),
+  removeMember: (orgId: string, userId: string) => del(`/api/orgs/${orgId}/members/${userId}`),
+  keys: (orgId: string) => get<ApiKey[]>(`/api/orgs/${orgId}/keys`),
+  createKey: (orgId: string, name: string) =>
+    send<ApiKey & { key: string }>('POST', `/api/orgs/${orgId}/keys`, { name }),
+  deleteKey: (orgId: string, id: string) => del(`/api/orgs/${orgId}/keys/${id}`),
   main: (scope: Scope) => get<MainStats>(stats(scope, 'main')),
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),

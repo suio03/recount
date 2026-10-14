@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import { app } from './app'
+import { pruneSessions } from './auth'
 import { env } from './env'
 import { pruneSalts } from './ingest/identity'
 import { extractEnded } from './replay/sessions'
@@ -10,8 +11,12 @@ serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`recount api listening on http://localhost:${info.port}`)
 })
 
-// Hourly is enough: salts only need to disappear within a day of expiring.
-setInterval(() => pruneSalts().catch((e) => console.error('pruneSalts', e)), 3600_000).unref()
+// Hourly is enough: salts only need to disappear within a day of expiring, and expired sign-in
+// sessions are already refused.
+setInterval(() => {
+  pruneSalts().catch((e) => console.error('pruneSalts', e))
+  pruneSessions().catch((e) => console.error('pruneSessions', e))
+}, 3600_000).unref()
 
 // Payments are pulled from the providers' APIs rather than pushed by webhooks, so a self-hosted
 // install needs no public endpoint for them.

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, LogOut } from 'lucide-react'
+import { ChevronDown, LogOut, Settings as SettingsIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
@@ -8,6 +8,7 @@ import {
   type Dimension,
   type FilterKey,
   type Filters,
+  type Me,
   type Scope,
   type Site,
 } from './api'
@@ -20,31 +21,41 @@ import { PeriodPicker } from './dashboard/PeriodPicker'
 import { type Period, readPeriod, resolve, writePeriod } from './dashboard/period'
 import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
-import { SignIn } from './SignIn'
+import { Settings } from './Settings'
+import { AcceptInvite, SignIn } from './SignIn'
 import { Switch } from './ui/Switch'
 
 /** The realtime view refetches this often. */
 const REALTIME_REFRESH_MS = 30_000
 
+type View = 'dashboard' | 'settings'
+
 /** Site, period and filters live in the query string so a view can be reloaded and shared. */
 function useUrlState() {
   const params = new URLSearchParams(window.location.search)
+  const [view, setView] = useState<View>(
+    params.get('view') === 'settings' ? 'settings' : 'dashboard',
+  )
   const [domain, setDomain] = useState(params.get('site') ?? undefined)
   const [period, setPeriod] = useState<Period>(() => readPeriod(params))
   const [filters, setFilters] = useState<Filters>(() => readFilters(params))
   useEffect(() => {
     const next = new URLSearchParams()
+    if (view !== 'dashboard') next.set('view', view)
     if (domain) next.set('site', domain)
     writePeriod(period, next)
     for (const [key, value] of Object.entries(filters)) if (value) next.set(key, value)
-    window.history.replaceState(null, '', `?${next}`)
-  }, [domain, period, filters])
+    window.history.replaceState(null, '', `?${next}${window.location.hash}`)
+  }, [view, domain, period, filters])
   return {
+    view,
+    setView,
     domain,
     // Filter values belong to one site, so switching sites starts unfiltered.
     setDomain: (d: string) => {
       setDomain(d)
       setFilters({})
+      setView('dashboard')
     },
     period,
     setPeriod,
@@ -56,7 +67,29 @@ function useUrlState() {
   }
 }
 
+/** An invite link carries its token after `#invite=`, which never reaches a server log. */
+function useInviteToken() {
+  const [token, setToken] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get('invite') ?? undefined,
+  )
+  const done = () => {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    setToken(undefined)
+  }
+  return [token, done] as const
+}
+
 export function App() {
+  const [invite, inviteDone] = useInviteToken()
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me, enabled: !invite })
+  if (invite) return <AcceptInvite token={invite} onDone={inviteDone} />
+  if (me.error instanceof ApiError && me.error.status === 401) return <SignIn />
+  if (me.isError) return <p className="p-6 text-muted">Could not load: {String(me.error)}</p>
+  if (!me.data) return null
+  return <SignedIn me={me.data} />
+}
+
+function SignedIn({ me }: { me: Me }) {
   const sites = useQuery({ queryKey: ['sites'], queryFn: api.sites })
   const state = useUrlState()
   const site = sites.data?.find((s) => s.domain === state.domain) ?? sites.data?.[0]
@@ -65,20 +98,33 @@ export function App() {
   // Resolved on every tick so presets roll over at midnight and realtime moves with the clock.
   const range = site && resolve(state.period, site.timezone, site.firstEvent, now)
 
-  if (sites.error instanceof ApiError && sites.error.status === 401) return <SignIn />
+  const settings = state.view === 'settings'
+  const canAdd = me.orgs.some((o) => o.role !== 'viewer')
   return (
     <div className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-5 pb-12 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
         <div className="flex flex-wrap items-center gap-4">
-          <span className="text-base font-semibold tracking-[-0.01em]">Recount</span>
+          <button
+            type="button"
+            onClick={() => state.setView('dashboard')}
+            className="cursor-pointer text-base font-semibold tracking-[-0.01em]"
+          >
+            Recount
+          </button>
           <span className="h-5 w-px bg-line" aria-hidden="true" />
-          {sites.data && sites.data.length > 0 && site && (
-            <SitePicker sites={sites.data} current={site} onChange={state.setDomain} />
+          {settings ? (
+            <span className="text-title font-semibold tracking-[-0.01em]">Settings</span>
+          ) : (
+            <>
+              {sites.data && sites.data.length > 0 && site && (
+                <SitePicker sites={sites.data} current={site} onChange={state.setDomain} />
+              )}
+              {site && site.role !== 'viewer' && <AiSwitch site={site} />}
+            </>
           )}
-          {site && <AiSwitch site={site} />}
         </div>
         <div className="flex items-center gap-2">
-          {site && range && (
+          {!settings && site && range && (
             <PeriodPicker
               period={state.period}
               range={range}
@@ -87,23 +133,31 @@ export function App() {
               onChange={state.setPeriod}
             />
           )}
-          {sites.data && <SignOut />}
+          {me.user && (
+            <button
+              type="button"
+              onClick={() => state.setView(settings ? 'dashboard' : 'settings')}
+              aria-label="Settings"
+              aria-pressed={settings}
+              title="Account, team and API keys"
+              className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
+            >
+              <SettingsIcon className="size-4" strokeWidth={1.75} />
+            </button>
+          )}
+          <SignOut />
         </div>
       </header>
 
-      {sites.isError && <p className="text-muted">Could not load sites: {String(sites.error)}</p>}
-      {sites.data?.length === 0 && (
-        <p className="text-muted">
-          No sites yet. Add one with <code className="font-mono text-path">POST /api/sites</code>,
-          or run <code className="font-mono text-path">pnpm seed</code> for a demo site.
-        </p>
+      {settings ? <Settings me={me} /> : <SitesView sites={sites} canAdd={canAdd} />}
+      {!settings && (
+        <FilterBar
+          filters={state.filters}
+          onRemove={state.removeFilter}
+          onClear={state.clearFilters}
+        />
       )}
-      <FilterBar
-        filters={state.filters}
-        onRemove={state.removeFilter}
-        onClear={state.clearFilters}
-      />
-      {site && range && (
+      {!settings && site && range && (
         <Dashboard
           key={site.id}
           site={site}
@@ -115,6 +169,31 @@ export function App() {
         />
       )}
     </div>
+  )
+}
+
+/** Why there is no dashboard yet, when the sites have not loaded or there are none. */
+function SitesView({
+  sites,
+  canAdd,
+}: {
+  sites: { isError: boolean; error: unknown; data?: Site[] }
+  canAdd: boolean
+}) {
+  if (sites.isError)
+    return <p className="text-muted">Could not load sites: {String(sites.error)}</p>
+  if (sites.data?.length !== 0) return null
+  return (
+    <p className="text-muted">
+      {canAdd ? (
+        <>
+          No sites yet. Add one with <code className="font-mono text-path">POST /api/sites</code>{' '}
+          and an API key from Settings.
+        </>
+      ) : (
+        'No sites yet. An admin of your team can add one.'
+      )}
+    </p>
   )
 }
 
@@ -236,7 +315,7 @@ function Dashboard({
           <Overview scope={scope} />
           {/* The overview sets the row height; a longer reading scrolls inside it. */}
           <div className="relative min-h-0">
-            <ReadingPanel scope={scope} onShow={onShow} />
+            <ReadingPanel scope={scope} canEnable={site.role !== 'viewer'} onShow={onShow} />
           </div>
         </div>
       )}

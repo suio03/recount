@@ -16,7 +16,8 @@
     "db:up": "docker compose -f infra/docker-compose.dev.yml up -d",
     "db:down": "docker compose -f infra/docker-compose.dev.yml down",
     "migrate": "pnpm --filter @recount/api migrate",
-    "seed": "pnpm --filter @recount/api seed"
+    "seed": "pnpm --filter @recount/api seed",
+    "user": "pnpm --filter @recount/api user"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

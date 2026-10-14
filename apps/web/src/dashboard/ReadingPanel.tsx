@@ -74,9 +74,12 @@ function Change({ finding: f }: { finding: Finding }) {
  */
 export function ReadingPanel({
   scope,
+  canEnable,
   onShow,
 }: {
   scope: Scope
+  /** Whether the viewer can switch AI on; only admins see the switch. */
+  canEnable: boolean
   /** Replaces the dashboard's filters with a finding's, to show its evidence. */
   onShow: (filters: Filters) => void
 }) {
@@ -128,7 +131,7 @@ export function ReadingPanel({
       ) : !data || refreshing ? (
         <Loading />
       ) : (
-        <Body data={data} onShow={onShow} />
+        <Body data={data} canEnable={canEnable} onShow={onShow} />
       )}
     </aside>
   )
@@ -149,7 +152,15 @@ function Loading() {
   )
 }
 
-function Body({ data, onShow }: { data: ReadingResult; onShow: (filters: Filters) => void }) {
+function Body({
+  data,
+  canEnable,
+  onShow,
+}: {
+  data: ReadingResult
+  canEnable: boolean
+  onShow: (filters: Filters) => void
+}) {
   const byId = new Map(data.findings.map((f) => [f.id, f]))
   const reading = data.reading
   return (
@@ -173,8 +184,10 @@ function Body({ data, onShow }: { data: ReadingResult; onShow: (filters: Filters
 
       {data.status === 'off' && (
         <p className="m-0 text-muted">
-          AI analysis is off for this site, so these changes are not explained. Turn it on at the
-          top of the page.
+          AI analysis is off for this site, so these changes are not explained.{' '}
+          {canEnable
+            ? 'Turn it on at the top of the page.'
+            : 'An admin of this site can turn it on.'}
         </p>
       )}
       {data.status === 'unconfigured' && (

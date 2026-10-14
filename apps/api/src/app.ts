@@ -3,8 +3,10 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { env } from './env'
+import { accountRoutes } from './routes/account'
 import { adminRoutes } from './routes/admin'
 import { eventRoutes } from './routes/event'
+import { orgRoutes } from './routes/orgs'
 import { replayRoutes } from './routes/replay'
 
 export const app = new Hono()
@@ -16,6 +18,8 @@ app.use('/api/event', cors({ origin: '*', allowMethods: ['POST'] }))
 app.use('/api/replay', cors({ origin: '*', allowMethods: ['POST'] }))
 app.route('/', eventRoutes)
 app.route('/', replayRoutes)
+app.route('/', accountRoutes)
+app.route('/', orgRoutes)
 app.route('/', adminRoutes)
 
 /** The tracker, and the recorder it loads for sampled sessions. */

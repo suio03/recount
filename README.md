@@ -63,13 +63,15 @@ pnpm seed                       # optional: a demo site with sample traffic
 pnpm dev                        # API :8787, web :5173
 ```
 
+Open the dashboard and create the owner account; the form asks for `ADMIN_TOKEN`.
+
 Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 ### Configuration
 
 | Variable | Default | What |
 |---|---|---|
-| `ADMIN_TOKEN` | required | Bearer token for the private API and the dashboard's sign-in, at least 24 characters |
+| `ADMIN_TOKEN` | required | At least 24 characters. Creating the first account asks for it; as a bearer token it can do anything, for scripts that predate API keys |
 | `DATABASE_URL`, `CLICKHOUSE_*` | see `.env.example` | Database connections |
 | `PUBLIC_URL` | `http://localhost:8787` | Where the API is reached; the dev dashboard proxies to it |
 | `ANTHROPIC_API_KEY` | unset | Enables AI analysis. Without it, AI-enabled sites show only the detected changes |
@@ -80,10 +82,15 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 ## Adding a site
 
+Create an API key under Settings, then:
+
 ```sh
-curl -H "Authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+curl -H "Authorization: Bearer $RECOUNT_KEY" -H 'content-type: application/json' \
   -d '{"domain":"example.com","timezone":"Europe/Berlin"}' localhost:8787/api/sites
 ```
+
+The site joins the key's team. `ADMIN_TOKEN` works as a bearer token too; with it, or as a person
+in several teams, add `"org": "<org id>"`.
 
 Add `"ai": true` to turn AI analysis on from the start, or flip the switch next to the site name
 in the dashboard later.
@@ -157,13 +164,27 @@ and the tracker on port 8787, and applies new migrations each time it starts. It
 17 and ClickHouse 25.8.
 
 All configuration, secrets included, comes from the container's environment; the image holds
-none. Behind a TLS proxy, open the dashboard and sign in with `ADMIN_TOKEN`; the browser keeps a
-30-day session cookie, and changing the token signs every browser out.
+none. Behind a TLS proxy, open the dashboard and create the owner account, which asks for
+`ADMIN_TOKEN`; sites that were there before accounts join the owner's team. Sign-ins last 30
+days.
 
 To deploy automatically, put the deploy webhook of the app that runs the image (Dokploy, or
 anything with one) in a `DOKPLOY_DEPLOY_URL` secret of the repository's `production`
 environment. CI calls it once the new image is published. Without the secret, CI publishes the
 image and stops there.
+
+## Accounts
+
+People sign in with email and password. Each team (org) owns sites and gives its members a role:
+viewers see the dashboards, admins also manage sites, members, invites and API keys, owners also
+give and take away ownership. Settings → Team creates an invite link to send by hand; there is no
+email sending yet. Someone who forgot their password asks whoever runs the server, who sets a new
+one and signs that person out everywhere:
+
+```sh
+node dist/user.js password someone@example.com   # in the container; pnpm user password ... in dev
+node dist/user.js list
+```
 
 ## License
 

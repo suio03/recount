@@ -1,7 +1,8 @@
 import * as esbuild from 'esbuild'
 
 await esbuild.build({
-  entryPoints: ['src/server.ts', 'src/migrate.ts'],
+  // `user` resets passwords inside the container: node dist/user.js password <email>
+  entryPoints: { server: 'src/server.ts', migrate: 'src/migrate.ts', user: 'src/users/cli.ts' },
   outdir: 'dist',
   bundle: true,
   platform: 'node',

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { clickhouse } from './db/clickhouse'
 import { db, sql } from './db/postgres'
-import { readings, sites } from './db/schema'
+import { orgs, readings, sites } from './db/schema'
 import { type PaymentInput, recordPayments } from './revenue/record'
 
 // Fills a demo site with 60 days of synthetic traffic so the dashboard can be developed without
@@ -76,7 +76,15 @@ const DEVICES: Array<[[string, string, string], number]> = [
 ]
 
 async function main() {
-  await db.insert(sites).values({ domain: DOMAIN, name: 'Demo', ai: true }).onConflictDoNothing()
+  // The first org, or a new one that the first account takes over at setup.
+  const org =
+    (await db.query.orgs.findFirst({ orderBy: (o, { asc }) => asc(o.createdAt) })) ??
+    (await db.insert(orgs).values({ name: 'My sites' }).returning())[0]
+  if (!org) throw new Error('no org for the demo site')
+  await db
+    .insert(sites)
+    .values({ orgId: org.id, domain: DOMAIN, name: 'Demo', ai: true })
+    .onConflictDoNothing()
   const site = await db.query.sites.findFirst({ where: (s, { eq }) => eq(s.domain, DOMAIN) })
   if (!site) throw new Error('demo site missing')
   // Cached readings describe the old data.

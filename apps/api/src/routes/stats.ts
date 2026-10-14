@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { db } from '../db/postgres'
+import type { Site } from '../db/schema'
 import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
@@ -18,14 +18,11 @@ import {
 } from '../stats/queries'
 import { intervalOf, previousRange, RangeQuery } from '../stats/range'
 
-/** Mounted under /api/sites/:id/stats behind the admin bearer token. */
-export const statsRoutes = new Hono<{ Variables: { scope: Scope } }>()
+/** Mounted under /api/sites/:id/stats, after the site and the caller's access are checked. */
+export const statsRoutes = new Hono<{ Variables: { scope: Scope; site: Site } }>()
 
 statsRoutes.use('*', async (c, next) => {
-  const site = await db.query.sites.findFirst({
-    where: (s, { eq }) => eq(s.id, c.req.param('id') ?? ''),
-  })
-  if (!site) return c.json({ error: 'not found' }, 404)
+  const site = c.get('site')
   const range = RangeQuery.safeParse(c.req.query())
   if (!range.success) return c.json({ error: z.prettifyError(range.error) }, 400)
   c.set('scope', { site, range: range.data, filters: parseFilters(c.req.query()) })

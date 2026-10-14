@@ -15,8 +15,77 @@ import {
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' })
 
+export type Role = 'owner' | 'admin' | 'viewer'
+
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull(),
+  name: text('name').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const orgs = pgTable('orgs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const memberships = pgTable(
+  'memberships',
+  {
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').$type<Role>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.userId] })],
+)
+
+export const invites = pgTable('invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => orgs.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  role: text('role').$type<Role>().notNull(),
+  tokenHash: bytea('token_hash').notNull().unique(),
+  invitedBy: uuid('invited_by').references(() => users.id, { onDelete: 'set null' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const userSessions = pgTable('user_sessions', {
+  tokenHash: bytea('token_hash').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const apiKeys = pgTable('api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => orgs.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  keyHash: bytea('key_hash').notNull().unique(),
+  prefix: text('prefix').notNull(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const sites = pgTable('sites', {
   id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => orgs.id, { onDelete: 'cascade' }),
   domain: text('domain').notNull().unique(),
   name: text('name').notNull(),
   timezone: text('timezone').notNull().default('UTC'),
@@ -71,4 +140,5 @@ export const replaySummaries = pgTable(
 )
 
 export type Site = typeof sites.$inferSelect
+export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect
