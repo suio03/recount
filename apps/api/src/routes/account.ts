@@ -194,6 +194,8 @@ accountRoutes.get('/api/invites/:token', async (c) => {
   })
 })
 
+class AccountExists extends Error {}
+
 const Accept = z.object({ password: z.string().max(200), name: Name.optional() })
 
 /**
@@ -206,10 +208,11 @@ accountRoutes.post('/api/invites/:token', async (c) => {
   const found = await liveInvite(c.req.param('token'))
   if (!found) return c.json({ error: 'invite not found or expired' }, 404)
   const { invite } = found
-  let user = await userByEmail(invite.email)
-  if (user) {
+  const existing = await userByEmail(invite.email)
+  let passwordHash: string | undefined
+  if (existing) {
     if (blocked(c)) return c.json({ error: 'too many attempts' }, 429)
-    if (!(await verifyPassword(input.data.password, user.passwordHash))) {
+    if (!(await verifyPassword(input.data.password, existing.passwordHash))) {
       fail(c)
       return c.json({ error: 'wrong password' }, 401)
     }
@@ -217,26 +220,42 @@ accountRoutes.post('/api/invites/:token', async (c) => {
     const password = Password.safeParse(input.data.password)
     if (!password.success) return c.json({ error: z.prettifyError(password.error) }, 400)
     if (!input.data.name) return c.json({ error: 'name is required' }, 400)
-    user = (
-      await db
-        .insert(users)
-        .values({
-          email: invite.email,
-          name: input.data.name,
-          passwordHash: await hashPassword(password.data),
-        })
-        .returning()
-    )[0]
-    if (!user) throw new Error('user not created')
+    passwordHash = await hashPassword(password.data)
   }
-  const userId = user.id
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(memberships)
-      .values({ orgId: invite.orgId, userId, role: invite.role })
-      .onConflictDoNothing()
-    await tx.delete(invites).where(eq(invites.id, invite.id))
-  })
-  await startSession(c, userId)
-  return c.json({ orgId: invite.orgId })
+  // The invite may have been revoked, replaced or used while the password was checked, so it is
+  // used up first, and only an invite that was still there grants anything.
+  const result = await db
+    .transaction(async (tx) => {
+      const [used] = await tx
+        .delete(invites)
+        .where(and(eq(invites.id, invite.id), gt(invites.expiresAt, new Date())))
+        .returning({ orgId: invites.orgId, role: invites.role })
+      if (!used) return 'gone' as const
+      let userId = existing?.id
+      if (!userId && passwordHash && input.data.name) {
+        const [created] = await tx
+          .insert(users)
+          .values({ email: invite.email, name: input.data.name, passwordHash })
+          .onConflictDoNothing()
+          .returning({ id: users.id })
+        // Someone made an account with this email in the meantime; they must sign in with it,
+        // and the invite stays for that.
+        if (!created) throw new AccountExists()
+        userId = created.id
+      }
+      if (!userId) throw new Error('no user for invite')
+      await tx
+        .insert(memberships)
+        .values({ orgId: used.orgId, userId, role: used.role })
+        .onConflictDoNothing()
+      return { userId, orgId: used.orgId }
+    })
+    .catch((e) => {
+      if (e instanceof AccountExists) return 'exists' as const
+      throw e
+    })
+  if (result === 'gone') return c.json({ error: 'invite not found or expired' }, 404)
+  if (result === 'exists') return c.json({ error: 'account exists, reload to sign in' }, 409)
+  await startSession(c, result.userId)
+  return c.json({ orgId: result.orgId })
 })

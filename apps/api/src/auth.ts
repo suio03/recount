@@ -103,8 +103,13 @@ async function resolve(c: Context): Promise<Resolved> {
   const header = c.req.header('Authorization')
   if (header?.startsWith('Bearer ')) {
     const secret = header.slice(7)
-    // Keys are 32 random bytes, so they cannot be guessed and are not counted.
-    if (secret.startsWith(KEY_PREFIX)) return (await fromKey(secret)) ?? 'wrong'
+    if (secret.startsWith(KEY_PREFIX)) {
+      const key = await fromKey(secret)
+      if (key) return key
+      // Keys are 32 random bytes, so they cannot be guessed and wrong ones are not counted,
+      // unless ADMIN_TOKEN predates keys and happens to share their prefix.
+      if (!env.ADMIN_TOKEN.startsWith(KEY_PREFIX)) return 'wrong'
+    }
     const result = checkAdminToken(c, secret)
     return result === 'ok' ? { kind: 'admin' } : result
   }

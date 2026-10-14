@@ -162,7 +162,13 @@ async function changeMember(
     )
     const target = rows.find((r) => r.user_id === userId)
     if (!target) return c.json({ error: 'not found' }, 404)
-    const actor = c.get('role')
+    // A person's role may have changed while this request waited for the lock; keys and
+    // ADMIN_TOKEN have no membership row, so their role from the start still holds.
+    const actor =
+      principal.kind === 'user'
+        ? rows.find((r) => r.user_id === principal.user.id)?.role
+        : c.get('role')
+    if (!actor) return c.json({ error: 'not found' }, 404)
     // Anyone may leave; anything else needs the right to both the old role and the new one.
     const leaving = self && next === null
     if (!leaving && !(canAssign(actor, target.role) && (next === null || canAssign(actor, next))))
