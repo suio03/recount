@@ -9,8 +9,10 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core'
+import type { GoalMatch, Match } from '../stats/goals'
 
 // Tables are created by SQL files in migrations/postgres; keep these definitions in sync.
 
@@ -146,6 +148,40 @@ export const replaySummaries = pgTable(
   (t) => [primaryKey({ columns: [t.siteId, t.sessionId] })],
 )
 
+/** A goal defined by a rule: a page visit or a click. Custom events need no definition. */
+export const goals = pgTable(
+  'goals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    siteId: uuid('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    match: jsonb('match').$type<GoalMatch>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.siteId, t.name)],
+)
+
+export interface FunnelStep {
+  name: string
+  match: Match
+}
+
+export const funnels = pgTable(
+  'funnels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    siteId: uuid('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    steps: jsonb('steps').$type<FunnelStep[]>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.siteId, t.name)],
+)
+
 /** One model call, with its tokens and cost in millionths of a US dollar. */
 export const aiUsage = pgTable('ai_usage', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -166,3 +202,5 @@ export type AiKind = 'reading' | 'summary' | 'digest'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect
+export type Goal = typeof goals.$inferSelect
+export type Funnel = typeof funnels.$inferSelect

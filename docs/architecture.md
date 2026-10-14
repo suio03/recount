@@ -54,8 +54,8 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 - Third-party secrets (Paddle keys, later Creem) are entered in the dashboard and stored sealed
   with AES-256-GCM under `ENCRYPTION_KEY`, instead of naming an environment variable per source.
 - A site can have a public read-only dashboard at `/share/<token>`, created and turned off by
-  its admins. It serves the main stats, breakdowns and goals only: no AI reading, since each
-  costs a model call, and no recordings.
+  its admins. It serves the main stats, breakdowns, goals and funnels only: no AI reading,
+  since each costs a model call, and no recordings.
 
 ## Hosted service
 
@@ -72,7 +72,8 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
   `payments`, `replay_chunks` (raw rrweb batches, kept 30 days) and `replay_sessions`
   (extracted timelines, kept 180 days).
 - PostgreSQL: accounts, sites, salts, revenue sources, cached readings and replay summaries,
-  the AI usage log; later goals and funnels.
+  the AI usage log, goals and funnels. Goal and funnel rules are applied when stats are queried,
+  so a new goal counts past visits too.
 
 ## Roadmap
 
@@ -100,16 +101,18 @@ Done:
     first-event check, site settings, connecting Paddle with an encrypted key, public links.
 11. **Usage and AI cost control**: a log of every model call with tokens and cost, a daily AI
     budget per org, admin-only rewrites, monthly usage per site in Settings.
+12. **Goals and funnels**: goals defined in site settings as a page visit or a click rule
+    (element text or label, section, page, link address), usable as filters; funnels of goals,
+    custom events and pages, counted in order within one visit, on the dashboard and public links.
 
 Next:
 
 1. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-2. **Goals and funnels**: goals defined by click rules (element text, section, page), funnels.
-3. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-4. **Attribution**: first touch next to last non-direct touch; Creem sync.
-5. **Questions and digests**: MCP server for asking about the data, periodic email digests.
-6. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+2. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+3. **Attribution**: first touch next to last non-direct touch; Creem sync.
+4. **Questions and digests**: MCP server for asking about the data, periodic email digests.
+5. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
 
 ## Known gaps in the skeleton
 

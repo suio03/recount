@@ -24,6 +24,25 @@ describe('filterSql', () => {
     expect(params).toEqual({ f_channel: "x' OR 1=1", f_page: '/tools/cursor', f_goal: 'Search' })
   })
 
+  it('looks up a defined goal by its rule', () => {
+    const { where, params } = filterSql({ goal: 'Pricing' }, [
+      { name: 'Pricing', match: { kind: 'page', path: '/pricing' } },
+    ])
+    expect(where).toBe(
+      "session_id IN (SELECT session_id FROM events WHERE site_id = {site:UUID} AND (name = 'pageview' AND match(pathname, {f_goal_path:String})))",
+    )
+    expect(params).toEqual({ f_goal_path: '^/pricing$' })
+  })
+
+  it('looks for a defined goal among the events it is given', () => {
+    const { where } = filterSql(
+      { goal: 'Pricing' },
+      [{ name: 'Pricing', match: { kind: 'page', path: '/pricing' } }],
+      'site_id = {site:UUID} AND day = {from:Date}',
+    )
+    expect(where).toContain('FROM events WHERE site_id = {site:UUID} AND day = {from:Date} AND (')
+  })
+
   it('matches everything without filters', () => {
     expect(filterSql({})).toEqual({ where: '1', params: {} })
   })

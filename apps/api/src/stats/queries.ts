@@ -1,13 +1,18 @@
 import { clickhouse } from '../db/clickhouse'
 import type { Site } from '../db/schema'
 import { type Filters, filterSql } from './filters'
+import { type GoalDefinition, type GoalMatch, type Match, matchSql } from './goals'
 import { type DateRange, rangeParams, withinMoments } from './range'
 
-/** What every stats query is scoped to: one site, one date range, and the active filters. */
+/**
+ * What every stats query is scoped to: one site, one date range, and the active filters. The
+ * site's defined goals come along, since a goal filter needs its rule.
+ */
 export interface Scope {
   site: Site
   range: DateRange
   filters: Filters
+  goals: GoalDefinition[]
 }
 
 export const inRange = `site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}
@@ -46,7 +51,7 @@ const SESSIONS = `
 
 /** SQL for the sessions in scope, plus the parameters it needs. */
 export function sessions(scope: Scope, range = scope.range) {
-  const filter = filterSql(scope.filters)
+  const filter = filterSql(scope.filters, scope.goals, inRange)
   return {
     sql: `SELECT * FROM (${SESSIONS}) WHERE ${filter.where}`,
     params: {
@@ -87,28 +92,91 @@ export function totalsOf(scope: Scope, range: DateRange) {
 
 export interface GoalRow {
   name: string
+  /** A custom event, or what a defined goal matches. */
+  kind: 'event' | GoalMatch['kind']
   visitors: number
   events: number
 }
 
-export function goalsOf(scope: Scope, range: DateRange) {
+/**
+ * Custom events and defined goals with the visitors who reached them among the sessions in
+ * scope. A defined goal is listed even when nobody reached it, and wins over a custom event of
+ * the same name.
+ */
+export async function goalsOf(scope: Scope, range: DateRange): Promise<GoalRow[]> {
   const s = sessions(scope, range)
-  return rows<GoalRow>(
-    `SELECT name, uniqExact(visitor_id) AS visitors, count() AS events
-     FROM events
-     WHERE ${inRange} AND name NOT IN ('pageview', 'click')
-       AND session_id IN (SELECT session_id FROM (${s.sql}))
-     GROUP BY name ORDER BY visitors DESC, name`,
-    s.params,
-  )
+  const inScope = `${inRange} AND session_id IN (SELECT session_id FROM (${s.sql}))`
+  const matches = scope.goals.map((g, i) => matchSql(g.match, `g${i}`))
+  const [events, defined] = await Promise.all([
+    rows<{ name: string; visitors: number; events: number }>(
+      `SELECT name, uniqExact(visitor_id) AS visitors, count() AS events
+       FROM events
+       WHERE ${inScope} AND name NOT IN ('pageview', 'click')
+       GROUP BY name`,
+      s.params,
+    ),
+    matches.length
+      ? rows<Record<string, number>>(
+          `SELECT ${matches
+            .map((m, i) => `uniqExactIf(visitor_id, ${m.sql}) AS v${i}, countIf(${m.sql}) AS e${i}`)
+            .join(', ')}
+           FROM events WHERE ${inScope}`,
+          Object.assign({}, s.params, ...matches.map((m) => m.params)),
+        ).then((r) => r[0] ?? {})
+      : ({} as Record<string, number>),
+  ])
+  const names = new Set(scope.goals.map((g) => g.name))
+  return [
+    ...scope.goals.map((g, i) => ({
+      name: g.name,
+      kind: g.match.kind,
+      visitors: Number(defined[`v${i}`] ?? 0),
+      events: Number(defined[`e${i}`] ?? 0),
+    })),
+    ...events.filter((e) => !names.has(e.name)).map((e) => ({ ...e, kind: 'event' as const })),
+  ].sort((a, b) => b.visitors - a.visitors || a.name.localeCompare(b.name))
+}
+
+/** Funnels count visits: a session moves down a step once it reaches the next one, in order. */
+const FUNNEL_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Visitors who reached each step of a funnel, in order, within one session in scope. Other
+ * events may happen between steps. Each event moves a session at most one step, so a view of
+ * `/products/pro` alone does not complete both `/products/*` and `/products/pro`, and a step
+ * repeated needs the event twice. `visitors[i]` counts those who got at least to step i.
+ */
+export function funnelSql(scope: Scope, steps: Match[], range: DateRange) {
+  const s = sessions(scope, range)
+  const matches = steps.map((m, i) => matchSql(m, `s${i}`))
+  return {
+    sql: `SELECT ${steps.map((_, i) => `uniqExactIf(visitor_id, level >= ${i + 1}) AS s${i}`).join(', ')}
+     FROM (
+       SELECT any(visitor_id) AS visitor_id,
+              windowFunnel(${FUNNEL_WINDOW_MS}, 'strict_once')(
+                toUInt64(toUnixTimestamp64Milli(timestamp)), ${matches.map((m) => m.sql).join(', ')}
+              ) AS level
+       FROM events
+       WHERE ${inRange} AND session_id IN (SELECT session_id FROM (${s.sql}))
+       GROUP BY session_id
+     )`,
+    params: Object.assign({}, s.params, ...matches.map((m) => m.params)),
+  }
+}
+
+export async function funnelOf(scope: Scope, steps: Match[], range: DateRange) {
+  const f = funnelSql(scope, steps, range)
+  const [row] = await rows<Record<string, number>>(f.sql, f.params)
+  return steps.map((_, i) => Number(row?.[`s${i}`] ?? 0))
 }
 
 /**
  * Payments in scope: dated by when they were paid, filtered through the snapshot of the session
- * each one is attributed to. Unattributed payments count only when no filter is active.
+ * each one is attributed to. Unattributed payments count only when no filter is active. Like the
+ * snapshot, a defined goal looks at the whole session, whenever its events happened.
  */
 export function payments(scope: Scope, range = scope.range) {
-  const filter = filterSql(scope.filters)
+  const filter = filterSql(scope.filters, scope.goals)
   return {
     sql: `SELECT * FROM payments FINAL
           WHERE site_id = {site:UUID} AND toDate(timestamp, {tz:String}) BETWEEN {from:Date} AND {to:Date}

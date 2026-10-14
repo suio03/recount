@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleCheck, CreditCard, Globe, Link2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, type Me, type RevenueSource, type Site, type SiteChange } from './api'
+import { FunnelSettings, GoalSettings } from './GoalSettings'
 import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
 import { Panel } from './ui/Panel'
 import { SegmentedControl } from './ui/SegmentedControl'
@@ -113,12 +114,14 @@ export function NewSite({ me, onCreated }: { me: Me; onCreated: (site: Site) => 
   )
 }
 
-/** A site's install snippet, its settings, and deleting it. */
+/** A site's install snippet, its settings, goals and funnels, and deleting it. */
 export function SiteSettings({ site, onDeleted }: { site: Site; onDeleted: () => void }) {
   return (
     <div className="grid max-w-3xl gap-3">
       <Install site={site} />
       <General key={site.id} site={site} />
+      <GoalSettings key={`goals-${site.id}`} site={site} />
+      <FunnelSettings key={`funnels-${site.id}`} site={site} />
       <Revenue key={`revenue-${site.id}`} site={site} />
       <PublicLink site={site} />
       <DeleteSite site={site} onDeleted={onDeleted} />

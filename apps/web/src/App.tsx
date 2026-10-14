@@ -14,6 +14,7 @@ import {
 } from './api'
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
 import { FilterBar } from './dashboard/FilterBar'
+import { FunnelPanel } from './dashboard/FunnelPanel'
 import { readFilters } from './dashboard/filters'
 import { GoalsPanel } from './dashboard/GoalsPanel'
 import { Overview } from './dashboard/Overview'
@@ -464,6 +465,7 @@ function Dashboard({
           {...props}
         />
         <GoalsPanel scope={scope} onFilter={(goal) => onFilter('goal', goal)} />
+        <FunnelPanel scope={scope} />
       </div>
     </>
   )

@@ -165,8 +165,50 @@ export interface Breakdown {
   rows: Array<{ value: string; visitors: number; revenue?: number }>
 }
 
+/**
+ * What a goal or funnel step matches. Page paths take `*` for any characters; unset click fields
+ * match anything.
+ */
+export type Match =
+  | { kind: 'event'; name: string }
+  | { kind: 'page'; path: string }
+  | { kind: 'click'; text?: string; section?: string; page?: string; href?: string }
+
+export type GoalMatch = Exclude<Match, { kind: 'event' }>
+
+/** A goal defined by a rule. Custom events are goals without being defined. */
+export interface GoalDefinition {
+  id: string
+  name: string
+  match: GoalMatch
+}
+
+export interface FunnelStep {
+  name: string
+  match: Match
+}
+
+export interface FunnelDefinition {
+  id: string
+  name: string
+  steps: FunnelStep[]
+}
+
 export interface Goals {
-  goals: Array<{ name: string; visitors: number; events: number; previous_visitors: number }>
+  goals: Array<{
+    name: string
+    kind: Match['kind']
+    visitors: number
+    events: number
+    previous_visitors: number
+  }>
+}
+
+/** Visitors who reached each step in order within one visit, now and in the previous period. */
+export interface FunnelStats {
+  id: string
+  name: string
+  steps: Array<{ name: string; kind: Match['kind']; visitors: number; previous_visitors: number }>
 }
 
 export type Metric =
@@ -374,6 +416,15 @@ export const api = {
   syncRevenue: (siteId: string, id: string) =>
     send<RevenueSource>('POST', `/api/sites/${siteId}/revenue/${id}/sync`, {}),
   disconnectRevenue: (siteId: string, id: string) => del(`/api/sites/${siteId}/revenue/${id}`),
+  definedGoals: (siteId: string) =>
+    get<{ goals: GoalDefinition[]; events: string[] }>(`/api/sites/${siteId}/goals`),
+  createGoal: (siteId: string, input: { name: string; match: GoalMatch }) =>
+    send<GoalDefinition>('POST', `/api/sites/${siteId}/goals`, input),
+  deleteGoal: (siteId: string, id: string) => del(`/api/sites/${siteId}/goals/${id}`),
+  definedFunnels: (siteId: string) => get<FunnelDefinition[]>(`/api/sites/${siteId}/funnels`),
+  createFunnel: (siteId: string, input: { name: string; steps: FunnelStep[] }) =>
+    send<FunnelDefinition>('POST', `/api/sites/${siteId}/funnels`, input),
+  deleteFunnel: (siteId: string, id: string) => del(`/api/sites/${siteId}/funnels/${id}`),
   me: () => get<Me>('/api/me'),
   setupNeeded: () => get<{ needed: boolean }>('/api/setup'),
   setup: (input: { setupCode: string; email: string; name: string; password: string }) =>
@@ -403,6 +454,9 @@ export const api = {
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),
   goals: (scope: Scope) => get<Goals>(stats(scope, 'goals')),
+  funnels: (scope: Scope) =>
+    get<{ funnels: Array<{ id: string; name: string }> }>(stats(scope, 'funnels')),
+  funnel: (scope: Scope, id: string) => get<FunnelStats>(stats(scope, 'funnel', { id })),
   reading: (scope: Scope, refresh = false) =>
     get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),

@@ -1,7 +1,10 @@
+import { type GoalDefinition, matchSql } from './goals'
+
 /**
  * Dashboard filters. Every filter narrows the set of sessions the stats are computed from, so
  * all panels agree: a session-level filter matches the session's first-touch value, `page`
- * keeps sessions that viewed the page, and `goal` keeps sessions that triggered the event.
+ * keeps sessions that viewed the page, and `goal` keeps sessions that reached the goal: a defined
+ * goal by its rule, otherwise the custom event of that name.
  */
 
 export const SESSION_DIMENSIONS = [
@@ -34,14 +37,29 @@ export function parseFilters(query: Record<string, string | undefined>): Filters
 
 /**
  * A WHERE condition over the SESSIONS columns, with values passed as query parameters named
- * `f_<key>`. Returns `1` when there are no filters.
+ * `f_<key>`. Returns `1` when there are no filters. A defined goal looks up its sessions among
+ * the events matching `events`, which should be the ones the session columns were built from,
+ * so the goal is reached within the same range as `event_names` and `pages`.
  */
-export function filterSql(filters: Filters): { where: string; params: Record<string, string> } {
+export function filterSql(
+  filters: Filters,
+  goals: GoalDefinition[] = [],
+  events = 'site_id = {site:UUID}',
+): { where: string; params: Record<string, string> } {
   const conditions: string[] = []
   const params: Record<string, string> = {}
   for (const key of FILTER_KEYS) {
     const value = filters[key]
     if (value === undefined) continue
+    const defined = key === 'goal' ? goals.find((g) => g.name === value) : undefined
+    if (defined) {
+      const match = matchSql(defined.match, 'f_goal')
+      Object.assign(params, match.params)
+      conditions.push(
+        `session_id IN (SELECT session_id FROM events WHERE ${events} AND ${match.sql})`,
+      )
+      continue
+    }
     const param = `{f_${key}:String}`
     params[`f_${key}`] = value
     if (key === 'page') conditions.push(`has(pages, ${param})`)

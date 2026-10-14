@@ -30,11 +30,22 @@ const TTL_MS = 6 * 60 * 60 * 1000
 
 const inFlight = new Map<string, Promise<ReadingResponse>>()
 
+/** Defined goals are part of the key, so editing them rewrites readings that cite goals. */
 function cacheKey(scope: Scope) {
   const filters = Object.entries(scope.filters).sort(([a], [b]) => a.localeCompare(b))
+  const goals = scope.goals
+    .map((g) => [g.name, g.match])
+    .sort(([a], [b]) => String(a).localeCompare(String(b)))
   return createHash('sha256')
     .update(
-      JSON.stringify([scope.site.id, scope.range, filters, env.READING_MODEL, PROMPT_VERSION]),
+      JSON.stringify([
+        scope.site.id,
+        scope.range,
+        filters,
+        goals,
+        env.READING_MODEL,
+        PROMPT_VERSION,
+      ]),
     )
     .digest('hex')
 }

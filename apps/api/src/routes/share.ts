@@ -7,11 +7,11 @@ import { statsRoutes } from './stats'
 
 /**
  * A site's public read-only dashboard, opened by its share link without signing in. It has the
- * numbers only: no AI reading (each one costs a model call) and no recordings.
+ * numbers only, funnels included: no AI reading (each one costs a model call) and no recordings.
  */
 export const shareRoutes = new Hono<{ Variables: { site: Site } }>()
 
-const SHARED = new Set(['main', 'breakdown', 'goals'])
+const SHARED = new Set(['main', 'breakdown', 'goals', 'funnels', 'funnel'])
 
 shareRoutes.use('/api/share/:token/*', async (c, next) => {
   const token = c.req.param('token') ?? ''

@@ -18,6 +18,7 @@ import { normalizeDomain, validTimezone } from '../domain'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
 import { rows } from '../stats/queries'
+import { funnelRoutes, goalRoutes } from './goals'
 import { revenueRoutes } from './revenue'
 import { statsRoutes } from './stats'
 
@@ -189,6 +190,8 @@ adminRoutes.delete('/api/sites/:id', async (c) => {
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)
 adminRoutes.route('/api/sites/:id/revenue', revenueRoutes)
+adminRoutes.route('/api/sites/:id/goals', goalRoutes)
+adminRoutes.route('/api/sites/:id/funnels', funnelRoutes)
 
 /** A session's recording, for the replay player. Offsets count from its first event. */
 adminRoutes.get('/api/sites/:id/replays/:session', async (c) => {

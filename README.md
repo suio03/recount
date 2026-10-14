@@ -143,6 +143,20 @@ and markup can add meaning:
 | `data-rc-mask` | Element text inside is never sent |
 | `<meta name="recount:page-type" content="pricing">` | The page's semantic type |
 
+### Goals and funnels
+
+Custom events are goals already. In site settings, a goal can also be defined without changing
+the site's code:
+
+- **Page visit**: a path such as `/pricing`, where `*` stands for any characters (`/blog/*`).
+- **Click**: text the button or link contains (also matched against its `aria-label`, without
+  case), the section it is in, the page it is on, and part of the address it links to. Fill in
+  at least one of text, section or link.
+
+Rules apply when stats are read, so a goal defined today counts past visits too. A funnel lists
+2 to 8 steps, each a goal, a custom event or a page, and counts the visitors who reach each step
+in order within one visit.
+
 ### Revenue
 
 Put `recount.ids()` in the checkout's custom data (Paddle `customData`), then connect the Paddle

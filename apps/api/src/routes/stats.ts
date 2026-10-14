@@ -1,13 +1,16 @@
+import { and, eq } from 'drizzle-orm'
 import { type Context, Hono } from 'hono'
 import { z } from 'zod'
 import { atLeast } from '../auth'
-import type { Role, Site } from '../db/schema'
+import { db } from '../db/postgres'
+import { funnels, goals, type Role, type Site } from '../db/schema'
 import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
 import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
 import {
+  funnelOf,
   goalsOf,
   inRange,
   payments,
@@ -33,7 +36,11 @@ statsRoutes.use('*', async (c, next) => {
   const site = c.get('site')
   const range = RangeQuery.safeParse(c.req.query())
   if (!range.success) return c.json({ error: z.prettifyError(range.error) }, 400)
-  c.set('scope', { site, range: range.data, filters: parseFilters(c.req.query()) })
+  const defined = await db
+    .select({ name: goals.name, match: goals.match })
+    .from(goals)
+    .where(eq(goals.siteId, site.id))
+  c.set('scope', { site, range: range.data, filters: parseFilters(c.req.query()), goals: defined })
   await next()
 })
 
@@ -122,7 +129,10 @@ statsRoutes.get('/breakdown', async (c) => {
   })
 })
 
-/** Custom events with the visitors who triggered them, for this range and the one before. */
+/**
+ * Custom events and defined goals with the visitors who reached them, for this range and the one
+ * before.
+ */
 statsRoutes.get('/goals', async (c) => {
   const scope = c.get('scope')
   const [current, before] = await Promise.all([
@@ -132,6 +142,47 @@ statsRoutes.get('/goals', async (c) => {
   const previous = new Map(before.map((g) => [g.name, g.visitors]))
   return c.json({
     goals: current.map((g) => ({ ...g, previous_visitors: previous.get(g.name) ?? 0 })),
+  })
+})
+
+/** The site's funnels, to pick one for the dashboard. */
+statsRoutes.get('/funnels', async (c) =>
+  c.json({
+    funnels: await db
+      .select({ id: funnels.id, name: funnels.name })
+      .from(funnels)
+      .where(eq(funnels.siteId, c.get('site').id))
+      .orderBy(funnels.createdAt),
+  }),
+)
+
+/**
+ * One funnel's steps with the visitors who reached each, in order and within one visit, for this
+ * range and the one before.
+ */
+statsRoutes.get('/funnel', async (c) => {
+  const id = c.req.query('id') ?? ''
+  const scope = c.get('scope')
+  const funnel =
+    z.uuid().safeParse(id).success &&
+    (await db.query.funnels.findFirst({
+      where: and(eq(funnels.id, id), eq(funnels.siteId, scope.site.id)),
+    }))
+  if (!funnel) return c.json({ error: 'not found' }, 404)
+  const matches = funnel.steps.map((s) => s.match)
+  const [current, before] = await Promise.all([
+    funnelOf(scope, matches, scope.range),
+    funnelOf(scope, matches, previousRange(scope.range)),
+  ])
+  return c.json({
+    id: funnel.id,
+    name: funnel.name,
+    steps: funnel.steps.map((s, i) => ({
+      name: s.name,
+      kind: s.match.kind,
+      visitors: current[i] ?? 0,
+      previous_visitors: before[i] ?? 0,
+    })),
   })
 })
 
