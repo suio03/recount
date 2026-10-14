@@ -26,4 +26,7 @@ const Env = z.object({
   WEB_DIST: z.string().default(new URL('../../web/dist', import.meta.url).pathname),
 })
 
-export const env = Env.parse(process.env)
+// An empty value, as in `TRUST_CF_HEADERS=` left blank in a hosting panel, counts as unset.
+export const env = Env.parse(
+  Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== '')),
+)
