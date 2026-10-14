@@ -63,6 +63,8 @@ export interface Site {
   firstEvent: string | null
 }
 
+export type SiteChange = Partial<Pick<Site, 'name' | 'timezone' | 'currency' | 'ai'>>
+
 export interface DateRange {
   from: string
   to: string
@@ -293,6 +295,11 @@ const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) =
 export const api = {
   sites: () => get<Site[]>('/api/sites'),
   setAi: (siteId: string, ai: boolean) => send<Site>('PATCH', `/api/sites/${siteId}`, { ai }),
+  createSite: (input: { domain: string; timezone: string; currency: string; org?: string }) =>
+    send<Site>('POST', '/api/sites', input),
+  updateSite: (siteId: string, change: SiteChange) =>
+    send<Site>('PATCH', `/api/sites/${siteId}`, change),
+  deleteSite: (siteId: string) => del(`/api/sites/${siteId}`),
   me: () => get<Me>('/api/me'),
   setupNeeded: () => get<{ needed: boolean }>('/api/setup'),
   setup: (input: { setupCode: string; email: string; name: string; password: string }) =>

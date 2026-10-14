@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, LogOut, Settings as SettingsIcon } from 'lucide-react'
+import { ChevronDown, LogOut, Settings as SettingsIcon, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
@@ -23,18 +23,20 @@ import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
 import { Settings } from './Settings'
 import { AcceptInvite, SignIn } from './SignIn'
+import { NewSite, SiteSettings } from './SiteSettings'
 import { Switch } from './ui/Switch'
 
 /** The realtime view refetches this often. */
 const REALTIME_REFRESH_MS = 30_000
 
-type View = 'dashboard' | 'settings'
+type View = 'dashboard' | 'settings' | 'site' | 'new-site'
+const VIEWS: View[] = ['dashboard', 'settings', 'site', 'new-site']
 
 /** Site, period and filters live in the query string so a view can be reloaded and shared. */
 function useUrlState() {
   const params = new URLSearchParams(window.location.search)
   const [view, setView] = useState<View>(
-    params.get('view') === 'settings' ? 'settings' : 'dashboard',
+    () => VIEWS.find((v) => v === params.get('view')) ?? 'dashboard',
   )
   const [domain, setDomain] = useState(params.get('site') ?? undefined)
   const [period, setPeriod] = useState<Period>(() => readPeriod(params))
@@ -51,11 +53,12 @@ function useUrlState() {
     view,
     setView,
     domain,
-    // Filter values belong to one site, so switching sites starts unfiltered.
-    setDomain: (d: string) => {
+    // Filter values belong to one site, so switching sites starts unfiltered. A site's settings
+    // stay open on the next site.
+    setDomain: (d: string | undefined, next?: View) => {
       setDomain(d)
       setFilters({})
-      setView('dashboard')
+      setView((v) => next ?? (v === 'site' ? 'site' : 'dashboard'))
     },
     period,
     setPeriod,
@@ -98,8 +101,16 @@ function SignedIn({ me }: { me: Me }) {
   // Resolved on every tick so presets roll over at midnight and realtime moves with the clock.
   const range = site && resolve(state.period, site.timezone, site.firstEvent, now)
 
-  const settings = state.view === 'settings'
   const canAdd = me.orgs.some((o) => o.role !== 'viewer')
+  // Viewers cannot open a site's settings or add one, even from a shared link.
+  const view =
+    (state.view === 'site' && site?.role === 'viewer') || (state.view === 'new-site' && !canAdd)
+      ? 'dashboard'
+      : state.view
+  const settings = view === 'settings'
+  const dashboard = view === 'dashboard'
+  // A new site opens on its install snippet.
+  const openCreated = (created: Site) => state.setDomain(created.domain, 'site')
   return (
     <div className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-5 pb-12 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
@@ -112,19 +123,38 @@ function SignedIn({ me }: { me: Me }) {
             Recount
           </button>
           <span className="h-5 w-px bg-line" aria-hidden="true" />
-          {settings ? (
-            <span className="text-title font-semibold tracking-[-0.01em]">Settings</span>
+          {settings || view === 'new-site' ? (
+            <span className="text-title font-semibold tracking-[-0.01em]">
+              {settings ? 'Settings' : 'New site'}
+            </span>
           ) : (
             <>
               {sites.data && sites.data.length > 0 && site && (
-                <SitePicker sites={sites.data} current={site} onChange={state.setDomain} />
+                <SitePicker
+                  sites={sites.data}
+                  current={site}
+                  onChange={state.setDomain}
+                  onAdd={canAdd ? () => state.setView('new-site') : undefined}
+                />
               )}
               {site && site.role !== 'viewer' && <AiSwitch site={site} />}
+              {site && site.role !== 'viewer' && (
+                <button
+                  type="button"
+                  onClick={() => state.setView(view === 'site' ? 'dashboard' : 'site')}
+                  aria-pressed={view === 'site'}
+                  title="Install, timezone, currency, delete"
+                  className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-2 text-label font-medium text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
+                >
+                  <SlidersHorizontal className="size-4" strokeWidth={1.75} aria-hidden="true" />
+                  Site settings
+                </button>
+              )}
             </>
           )}
         </div>
         <div className="flex items-center gap-2">
-          {!settings && site && range && (
+          {dashboard && site && range && (
             <PeriodPicker
               period={state.period}
               range={range}
@@ -149,15 +179,20 @@ function SignedIn({ me }: { me: Me }) {
         </div>
       </header>
 
-      {settings ? <Settings me={me} /> : <SitesView sites={sites} canAdd={canAdd} />}
-      {!settings && (
+      {settings && <Settings me={me} />}
+      {view === 'new-site' && <NewSite me={me} onCreated={openCreated} />}
+      {view === 'site' && site && (
+        <SiteSettings site={site} onDeleted={() => state.setDomain(undefined, 'dashboard')} />
+      )}
+      {dashboard && <SitesView sites={sites} me={me} canAdd={canAdd} onCreated={openCreated} />}
+      {dashboard && (
         <FilterBar
           filters={state.filters}
           onRemove={state.removeFilter}
           onClear={state.clearFilters}
         />
       )}
-      {!settings && site && range && (
+      {dashboard && site && range && (
         <Dashboard
           key={site.id}
           site={site}
@@ -175,26 +210,21 @@ function SignedIn({ me }: { me: Me }) {
 /** Why there is no dashboard yet, when the sites have not loaded or there are none. */
 function SitesView({
   sites,
+  me,
   canAdd,
+  onCreated,
 }: {
   sites: { isError: boolean; error: unknown; data?: Site[] }
+  me: Me
   canAdd: boolean
+  onCreated: (site: Site) => void
 }) {
   if (sites.isError)
     return <p className="text-muted">Could not load sites: {String(sites.error)}</p>
   if (sites.data?.length !== 0) return null
-  return (
-    <p className="text-muted">
-      {canAdd ? (
-        <>
-          No sites yet. Add one with <code className="font-mono text-path">POST /api/sites</code>{' '}
-          and an API key from Settings.
-        </>
-      ) : (
-        'No sites yet. An admin of your team can add one.'
-      )}
-    </p>
-  )
+  if (!canAdd) return <p className="text-muted">No sites yet. An admin of your team can add one.</p>
+  // The first site: once added, its install snippet is shown in its settings.
+  return <NewSite me={me} onCreated={onCreated} />
 }
 
 function SignOut() {
@@ -223,7 +253,7 @@ function AiSwitch({ site }: { site: Site }) {
     mutationFn: (ai: boolean) => api.setAi(site.id, ai),
     onSuccess: (updated) => {
       queryClient.setQueryData<Site[]>(['sites'], (all) =>
-        all?.map((s) => (s.id === updated.id ? updated : s)),
+        all?.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)),
       )
       for (const key of ['reading', 'replays', 'replayDigest'])
         queryClient.invalidateQueries({ queryKey: [key] })
@@ -241,14 +271,20 @@ function AiSwitch({ site }: { site: Site }) {
   )
 }
 
+/** Not a domain, so it cannot collide with a site. */
+const ADD = '+add'
+
 function SitePicker({
   sites,
   current,
   onChange,
+  onAdd,
 }: {
   sites: Site[]
   current: Site
   onChange: (domain: string) => void
+  /** Offers "Add a site" at the end of the list, for people who can. */
+  onAdd?: () => void
 }) {
   return (
     <label className="relative inline-flex items-center gap-1.5 text-title font-semibold tracking-[-0.01em]">
@@ -256,13 +292,14 @@ function SitePicker({
       <select
         className="cursor-pointer appearance-none rounded-sm bg-transparent pr-6 outline-none"
         value={current.domain}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => (e.target.value === ADD ? onAdd?.() : onChange(e.target.value))}
       >
         {sites.map((s) => (
           <option key={s.id} value={s.domain}>
             {s.domain}
           </option>
         ))}
+        {onAdd && <option value={ADD}>Add a site…</option>}
       </select>
       <ChevronDown
         className="pointer-events-none absolute right-0 size-4 text-muted"

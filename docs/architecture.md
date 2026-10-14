@@ -97,9 +97,9 @@ Done:
 
 Next:
 
-1. **Site management in the dashboard**: add and delete sites, install snippet and a
-   first-event check, site settings, replay and AI options, revenue connection with encrypted
-   keys, public dashboard links.
+1. **Site management in the dashboard**: revenue connection with encrypted keys, public
+   dashboard links. (Adding and deleting sites, the install snippet with a first-event check,
+   and site settings are done.)
 2. **Usage and AI cost control**: per-org usage counts, daily AI spend cap, log of model usage.
 3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.

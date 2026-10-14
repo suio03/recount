@@ -3,9 +3,12 @@ import { type Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { z } from 'zod'
 import { type AuthEnv, atLeast, orgsOf, type Principal, requireAuth, roleIn } from '../auth'
+import { clickhouse } from '../db/clickhouse'
 import { db } from '../db/postgres'
 import { type Role, type Site, sites } from '../db/schema'
+import { normalizeDomain, validTimezone } from '../domain'
 import { playable, recordingOf } from '../replay/sessions'
+import { forgetDomain } from '../sites'
 import { rows } from '../stats/queries'
 import { statsRoutes } from './stats'
 
@@ -65,14 +68,26 @@ adminRoutes.get('/api/sites', async (c) => {
   )
 })
 
+const Domain = z
+  .string()
+  .max(300)
+  .transform((d, ctx) => {
+    const domain = normalizeDomain(d)
+    if (!domain) ctx.addIssue({ code: 'custom', message: 'Enter a domain like example.com' })
+    return domain ?? z.NEVER
+  })
+const Name = z.string().trim().min(1).max(100)
+const Timezone = z.string().max(64).refine(validTimezone, 'Unknown timezone')
+const Currency = z
+  .string()
+  .regex(/^[A-Za-z]{3}$/, 'Use a three-letter currency code')
+  .transform((c) => c.toUpperCase())
+
 const NewSite = z.object({
-  domain: z
-    .string()
-    .min(3)
-    .max(253)
-    .transform((d) => d.toLowerCase().replace(/^www\./, '')),
-  name: z.string().min(1).max(100).optional(),
-  timezone: z.string().default('UTC'),
+  domain: Domain,
+  name: Name.optional(),
+  timezone: Timezone.default('UTC'),
+  currency: Currency.default('USD'),
   ai: z.boolean().default(false),
   /** Needed only when the caller administers more than one org. */
   org: z.uuid().optional(),
@@ -88,33 +103,56 @@ async function targetOrg(principal: Principal, asked: string | undefined) {
 adminRoutes.post('/api/sites', async (c) => {
   const parsed = NewSite.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400)
-  const { domain, name, timezone, ai, org } = parsed.data
+  const { domain, name, timezone, currency, ai, org } = parsed.data
   const orgId = await targetOrg(c.get('principal'), org)
   if (!orgId)
     return c.json({ error: org ? 'not allowed' : 'say which org with "org"' }, org ? 403 : 400)
   const [site] = await db
     .insert(sites)
-    .values({ orgId, domain, name: name ?? domain, timezone, ai })
+    .values({ orgId, domain, name: name ?? domain, timezone, currency, ai })
     .onConflictDoNothing()
     .returning()
-  return site ? c.json(site, 201) : c.json({ error: 'site exists' }, 409)
+  if (!site) return c.json({ error: `${domain} is already added` }, 409)
+  forgetDomain(domain)
+  return c.json({ ...site, role: await roleIn(c.get('principal'), orgId), firstEvent: null }, 201)
 })
 
-const SiteChange = z.object({ ai: z.boolean() })
+const SiteChange = z
+  .object({ name: Name, timezone: Timezone, currency: Currency, ai: z.boolean() })
+  .partial()
 
 const forbidden = (c: Context) => c.json({ error: 'not allowed' }, 403)
 
-/** Turns the model's reading of a site on or off. */
+/** Renames a site, moves its timezone or currency, or turns the model's reading on or off. */
 adminRoutes.patch('/api/sites/:id', async (c) => {
   if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
   const parsed = SiteChange.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: z.prettifyError(parsed.error) }, 400)
-  const [site] = await db
-    .update(sites)
-    .set(parsed.data)
-    .where(eq(sites.id, c.get('site').id))
-    .returning()
-  return site ? c.json({ ...site, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
+  const site = c.get('site')
+  const [updated] = Object.keys(parsed.data).length
+    ? await db.update(sites).set(parsed.data).where(eq(sites.id, site.id)).returning()
+    : [site]
+  return updated ? c.json({ ...updated, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
+})
+
+/** Tables in ClickHouse keyed by site, whose rows go with the site. */
+const SITE_TABLES = ['events', 'ai_crawls', 'payments', 'replay_chunks', 'replay_sessions']
+
+/**
+ * Deletes a site and everything recorded for it. The site goes first, so ingestion stops; its
+ * rows in ClickHouse are then removed in the background, as ClickHouse deletes are.
+ */
+adminRoutes.delete('/api/sites/:id', async (c) => {
+  if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
+  const site = c.get('site')
+  await db.delete(sites).where(eq(sites.id, site.id))
+  forgetDomain(site.domain)
+  for (const table of SITE_TABLES)
+    await clickhouse.command({
+      query: `ALTER TABLE ${table} DELETE WHERE site_id = {site:UUID}`,
+      query_params: { site: site.id },
+    })
+  return c.json({ ok: true })
 })
 
 adminRoutes.route('/api/sites/:id/stats', statsRoutes)

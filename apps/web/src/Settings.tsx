@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, KeyRound, UserPlus } from 'lucide-react'
+import { KeyRound, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 import { type ApiKey, api, type Me, type Org, type Role, type User } from './api'
-import { Button, ErrorText, Field, inputClass } from './ui/Form'
+import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
 import { Panel } from './ui/Panel'
 
 const RANK: Record<Role, number> = { viewer: 0, admin: 1, owner: 2 }
@@ -320,7 +320,7 @@ function InviteForm({ org, onInvited }: { org: Org; onInvited: () => void }) {
       <p className="m-0 text-label text-muted">{ROLES.find((r) => r.value === role)?.hint}.</p>
       {invite.isError && <ErrorText>{errorOf(invite.error)}</ErrorText>}
       {link && invite.data && (
-        <Secret
+        <CopyBox
           label={`Send this link to ${invite.data.email}. It works once, for 7 days.`}
           value={link}
         />
@@ -387,7 +387,7 @@ function Keys({ org }: { org: Org }) {
       </form>
       {create.isError && <ErrorText>{errorOf(create.error)}</ErrorText>}
       {create.data && (
-        <Secret label="Copy the key now. It is not shown again." value={create.data.key} />
+        <CopyBox label="Copy the key now. It is not shown again." value={create.data.key} />
       )}
     </Panel>
   )
@@ -405,66 +405,5 @@ function KeyRow({ apiKey, onDelete }: { apiKey: ApiKey; onDelete: () => void }) 
       </span>
       <ConfirmButton label="Delete" confirm="Confirm delete" onConfirm={onDelete} />
     </li>
-  )
-}
-
-/** A value shown once, with a copy button. */
-function Secret({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className="grid gap-1.5 rounded-sm bg-sunken p-3">
-      <span className="text-label text-muted">{label}</span>
-      <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 break-all font-mono text-label">{value}</code>
-        <button
-          type="button"
-          aria-label="Copy"
-          title="Copy"
-          onClick={() =>
-            navigator.clipboard.writeText(value).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            )
-          }
-          className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-sm text-muted hover:bg-surface hover:text-ink"
-        >
-          {copied ? (
-            <Check className="size-4" strokeWidth={1.75} />
-          ) : (
-            <Copy className="size-4" strokeWidth={1.75} />
-          )}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** A destructive action that asks once more inline instead of in a browser dialog. */
-function ConfirmButton({
-  label,
-  confirm,
-  onConfirm,
-  disabled,
-}: {
-  label: string
-  confirm: string
-  onConfirm: () => void
-  disabled?: boolean
-}) {
-  const [armed, setArmed] = useState(false)
-  return (
-    <Button
-      variant="quiet"
-      className={armed ? 'h-8 border-down text-down' : 'h-8'}
-      disabled={disabled}
-      onBlur={() => setArmed(false)}
-      onClick={() => {
-        if (!armed) return setArmed(true)
-        setArmed(false)
-        onConfirm()
-      }}
-    >
-      {armed ? confirm : label}
-    </Button>
   )
 }

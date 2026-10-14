@@ -81,17 +81,21 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 
 ## Adding a site
 
-Create an API key under Settings, then:
+In the dashboard, pick **Add a site…** in the site menu (with no sites yet, the form is shown
+straight away). The site's settings then show the script tag to paste, built from the options
+below, and say when the first pageview arrives. **Site settings** also changes the name,
+timezone and currency, and deletes a site with everything recorded for it.
+
+Scripts can do the same with an API key from Settings:
 
 ```sh
 curl -H "Authorization: Bearer $RECOUNT_KEY" -H 'content-type: application/json' \
-  -d '{"domain":"example.com","timezone":"Europe/Berlin"}' localhost:8787/api/sites
+  -d '{"domain":"example.com","timezone":"Europe/Berlin"}' https://<recount-host>/api/sites
 ```
 
 The site joins the key's team. Signed in as a person in several teams, add `"org": "<org id>"`.
-
-Add `"ai": true` to turn AI analysis on from the start, or flip the switch next to the site name
-in the dashboard later.
+`"ai": true` turns AI analysis on from the start; `PATCH /api/sites/<id>` changes `name`,
+`timezone`, `currency` or `ai`, and `DELETE /api/sites/<id>` deletes the site.
 
 Then add the tracker to the site:
 
