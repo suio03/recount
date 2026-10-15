@@ -12,7 +12,15 @@ import { statsRoutes } from './stats'
  */
 export const shareRoutes = new Hono<{ Variables: { site: Site } }>()
 
-const SHARED = new Set(['main', 'breakdown', 'goals', 'funnels', 'funnel'])
+const SHARED = new Set([
+  'main',
+  'breakdown',
+  'goals',
+  'properties',
+  'property',
+  'funnels',
+  'funnel',
+])
 
 shareRoutes.use('/api/share/:token/*', async (c, next) => {
   const token = c.req.param('token') ?? ''

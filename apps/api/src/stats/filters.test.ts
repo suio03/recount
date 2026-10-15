@@ -43,6 +43,19 @@ describe('filterSql', () => {
     expect(where).toContain('FROM events WHERE site_id = {site:UUID} AND day = {from:Date} AND (')
   })
 
+  it('keeps sessions with an event carrying a property value', () => {
+    const { where, params } = filterSql(parseFilters({ prop: 'plan=pro=max' }))
+    expect(where).toBe(
+      'session_id IN (SELECT session_id FROM events WHERE site_id = {site:UUID} AND mapContains(props, {f_prop_key:String}) AND props[{f_prop_key:String}] = {f_prop_value:String})',
+    )
+    expect(params).toEqual({ f_prop_key: 'plan', f_prop_value: 'pro=max' })
+  })
+
+  it('drops a property filter without a key', () => {
+    expect(parseFilters({ prop: '=pro' })).toEqual({})
+    expect(parseFilters({ prop: 'plan' })).toEqual({})
+  })
+
   it('matches everything without filters', () => {
     expect(filterSql({})).toEqual({ where: '1', params: {} })
   })

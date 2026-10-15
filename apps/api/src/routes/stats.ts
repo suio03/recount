@@ -9,6 +9,7 @@ import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
 import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
+import { propertiesOf, propertyOf } from '../stats/properties'
 import {
   funnelOf,
   goalsOf,
@@ -143,6 +144,31 @@ statsRoutes.get('/goals', async (c) => {
   return c.json({
     goals: current.map((g) => ({ ...g, previous_visitors: previous.get(g.name) ?? 0 })),
   })
+})
+
+const EventName = z.string().trim().min(1).max(120)
+
+/** The property names one custom event carries in scope. */
+statsRoutes.get('/properties', async (c) => {
+  const event = EventName.safeParse(c.req.query('event'))
+  if (!event.success) return c.json({ error: 'event: give an event name' }, 400)
+  return c.json(await propertiesOf(c.get('scope'), event.data))
+})
+
+const PropertyQuery = z.object({
+  event: EventName,
+  key: z.string().min(1).max(120),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+})
+
+/**
+ * One property of a custom event: its top values by visitors, and when every value is a number,
+ * its distribution over events (quartiles and equal-width bins).
+ */
+statsRoutes.get('/property', async (c) => {
+  const q = PropertyQuery.safeParse(c.req.query())
+  if (!q.success) return c.json({ error: z.prettifyError(q.error) }, 400)
+  return c.json(await propertyOf(c.get('scope'), q.data.event, q.data.key, q.data.limit))
 })
 
 /** The site's funnels, to pick one for the dashboard. */

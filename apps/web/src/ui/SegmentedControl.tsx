@@ -14,7 +14,7 @@ export function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>) {
   return (
     <div
-      className="inline-flex gap-0.5 rounded-sm bg-sunken p-0.5"
+      className="inline-flex flex-wrap gap-0.5 rounded-sm bg-sunken p-0.5"
       role="tablist"
       aria-label={label}
     >

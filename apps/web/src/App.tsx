@@ -595,7 +595,7 @@ function Dashboard({
           ]}
           {...props}
         />
-        <GoalsPanel scope={scope} onFilter={(goal) => onFilter('goal', goal)} />
+        <GoalsPanel scope={scope} onFilter={onFilter} />
         <FunnelPanel scope={scope} />
       </div>
     </>

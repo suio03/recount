@@ -1,23 +1,29 @@
 import { useQuery } from '@tanstack/react-query'
+import { ChevronRight } from 'lucide-react'
+import { Fragment, useState } from 'react'
 import { api, type Scope } from '../api'
 import { cx } from '../ui/cx'
 import { change, Delta } from '../ui/Delta'
 import { Panel } from '../ui/Panel'
+import { EventProperties } from './EventProperties'
+import { propertyFilterValue } from './filters'
 import { percent } from './format'
 
 const KIND_HINTS = { page: 'Page', click: 'Click' } as const
 
 /**
  * Custom events and defined goals with the share of visitors who reached them. The change compares that
- * conversion rate with the previous period, not the raw count.
+ * conversion rate with the previous period, not the raw count. A custom event opens to the
+ * properties it carries.
  */
 export function GoalsPanel({
   scope,
   onFilter,
 }: {
   scope: Scope
-  onFilter: (goal: string) => void
+  onFilter: (key: 'goal' | 'prop', value: string) => void
 }) {
+  const [opened, setOpened] = useState<string>()
   const goals = useQuery({
     queryKey: ['goals', scope],
     queryFn: () => api.goals(scope),
@@ -70,33 +76,70 @@ export function GoalsPanel({
               const before = main.data.previous.visitors
               const rate = total ? g.visitors / total : 0
               const delta = before ? change(rate, g.previous_visitors / before) : undefined
+              const open = g.kind === 'event' && opened === g.name
               return (
-                <tr key={g.name} className="border-t border-line">
-                  <th scope="row" className="py-2 text-left font-normal">
-                    <button
-                      type="button"
-                      onClick={() => onFilter(g.name)}
-                      title={`Filter by goal: ${g.name}`}
-                      className="w-full cursor-pointer truncate text-left hover:underline"
-                    >
-                      <span className={cx(g.kind === 'event' && 'font-mono text-path')}>
-                        {g.name}
+                <Fragment key={g.name}>
+                  <tr className="border-t border-line">
+                    <th scope="row" className="py-2 text-left font-normal">
+                      <span className="flex items-center gap-1">
+                        {g.kind === 'event' ? (
+                          <button
+                            type="button"
+                            onClick={() => setOpened(open ? undefined : g.name)}
+                            aria-expanded={open}
+                            aria-label={`${open ? 'Hide' : 'Show'} properties of ${g.name}`}
+                            title={`${open ? 'Hide' : 'Show'} properties`}
+                            className="-ml-1 grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-muted hover:bg-sunken hover:text-ink"
+                          >
+                            <ChevronRight
+                              className={cx('size-3.5 transition-transform', open && 'rotate-90')}
+                              strokeWidth={1.75}
+                            />
+                          </button>
+                        ) : (
+                          <span className="-ml-1 size-5 shrink-0" />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onFilter('goal', g.name)}
+                          title={`Filter by goal: ${g.name}`}
+                          className="min-w-0 flex-1 cursor-pointer truncate text-left hover:underline"
+                        >
+                          <span className={cx(g.kind === 'event' && 'font-mono text-path')}>
+                            {g.name}
+                          </span>
+                          {g.kind !== 'event' && (
+                            <span className="ml-2 text-label text-muted">{KIND_HINTS[g.kind]}</span>
+                          )}
+                        </button>
                       </span>
-                      {g.kind !== 'event' && (
-                        <span className="ml-2 text-label text-muted">{KIND_HINTS[g.kind]}</span>
+                    </th>
+                    <td className="py-2 text-right font-medium">
+                      {g.visitors.toLocaleString('en')}
+                    </td>
+                    <td className="py-2 text-right font-medium">{percent(rate, 1)}</td>
+                    <td className="py-2 text-right">
+                      {delta === undefined ? (
+                        <span className="text-label text-muted">—</span>
+                      ) : (
+                        <Delta value={delta} />
                       )}
-                    </button>
-                  </th>
-                  <td className="py-2 text-right font-medium">{g.visitors.toLocaleString('en')}</td>
-                  <td className="py-2 text-right font-medium">{percent(rate, 1)}</td>
-                  <td className="py-2 text-right">
-                    {delta === undefined ? (
-                      <span className="text-label text-muted">—</span>
-                    ) : (
-                      <Delta value={delta} />
-                    )}
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr>
+                      <td colSpan={4} className="pt-1 pb-4 pl-5">
+                        <EventProperties
+                          scope={scope}
+                          event={g.name}
+                          onFilter={(key, value) =>
+                            onFilter('prop', propertyFilterValue(key, value))
+                          }
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               )
             })}
           </tbody>

@@ -69,6 +69,13 @@ const TOOLS: Record<string, string> = {
   elevenlabs: 'ElevenLabs',
 }
 
+const SEARCH_CATEGORIES: Array<[string, number]> = [
+  ['code', 5],
+  ['writing', 3],
+  ['video', 2],
+  ['voice', 1],
+]
+
 interface Click {
   element_tag: string
   element_text: string
@@ -181,10 +188,11 @@ async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
       const at = () => new Date((t += 5_000 + random() * 60_000)).toISOString().replace('Z', '')
       const origin = `https://${DOMAIN}`
       // Time moves on either way, so both demos get the same visits.
-      const event = (name: string, pathname: string) => {
+      const event = (name: string, pathname: string, props: Record<string, string> = {}) => {
         const timestamp = at()
-        if (customEvents) rows.push({ ...session, timestamp, name, pathname })
+        if (customEvents) rows.push({ ...session, timestamp, name, pathname, props })
       }
+      const toolOf = (path: string) => path.match(/^\/tools\/(.+)/)?.[1]
       // A click on an element marked with data-rc-event carries that name instead of `click`.
       const click = (pathname: string, element: Click, name = 'click') =>
         rows.push({ ...session, timestamp: at(), name, pathname, ...element })
@@ -195,8 +203,16 @@ async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
         if (v > 0) click(pathname, linkTo(pathname, next, origin))
         pathname = next
         rows.push({ ...session, timestamp: at(), name: 'pageview', pathname })
-        if (views > 1 && random() < 0.35) event('Tool Open', pathname)
-        if (views > 1 && random() < 0.15) event('Search', pathname)
+        if (views > 1 && random() < 0.35) {
+          // Where the opened tool sat in the list, top slots far more often.
+          const position = String(1 + Math.floor(random() ** 2 * 12))
+          const tool = toolOf(pathname)
+          event('Tool Open', pathname, tool ? { tool, position } : { position })
+        }
+        if (views > 1 && random() < 0.15) {
+          const results = String(Math.floor(random() ** 3 * 240))
+          event('Search', pathname, { results, category: pick(SEARCH_CATEGORIES) })
+        }
         if (random() < 0.03) click(pathname, link('Log in', 'header', `${origin}/login`))
       }
       if (views > 1 && random() < 0.45) {
@@ -211,7 +227,7 @@ async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
           pathname,
           link(`Visit ${TOOLS[tool] ?? tool}`, 'Tool profile', `https://${tool}.com/?ref=ordalin`),
         )
-        event('Outbound Click', pathname)
+        event('Outbound Click', pathname, { tool })
       } else if (random() < 0.02)
         click(pathname, link('Follow us', 'footer', 'https://x.com/ordalin'))
       const ids = { visitorId: BigInt(session.visitor_id), sessionId: BigInt(session.session_id) }
@@ -222,7 +238,9 @@ async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
         }
         click('/submit', button('Submit tool', 'Submit form'))
         rows.push({ ...session, timestamp: at(), name: 'pageview', pathname: '/submit/thanks' })
-        event('Submission Sent', '/submit/thanks')
+        event('Submission Sent', '/submit/thanks', {
+          plan: random() < 0.3 ? 'featured' : 'free',
+        })
         if (random() < 0.6) {
           const customerId = `cus_${id()}`
           at()

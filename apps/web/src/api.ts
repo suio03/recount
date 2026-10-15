@@ -223,6 +223,33 @@ export interface Goals {
   }>
 }
 
+/** The property names a custom event carries, with the visitors and events carrying each. */
+export interface EventProperties {
+  event: string
+  events: number
+  properties: Array<{ key: string; visitors: number; events: number }>
+}
+
+/** One property's top values, and its distribution over events when every value is a number. */
+export interface EventProperty {
+  event: string
+  key: string
+  /** Events and visitors carrying the property, and how many values it takes. */
+  events: number
+  visitors: number
+  distinct: number
+  values: Array<{ value: string; visitors: number; events: number }>
+  distribution: {
+    min: number
+    p25: number
+    median: number
+    p75: number
+    max: number
+    /** Events per bin; a bin covers `from` up to, not including, `to`. */
+    bins: Array<{ from: number; to: number; events: number }>
+  } | null
+}
+
 /** Visitors who reached each step in order within one visit, now and in the previous period. */
 export interface FunnelStats {
   id: string
@@ -393,7 +420,7 @@ const del = (path: string) =>
     if (!res.ok) throw await failure(res)
   })
 
-export type FilterKey = Dimension | 'goal'
+export type FilterKey = Dimension | 'goal' | 'prop'
 export type Filters = Partial<Record<FilterKey, string>>
 
 /** What every stats request is scoped to. Also used as the react-query key. */
@@ -481,6 +508,10 @@ export const api = {
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),
   goals: (scope: Scope) => get<Goals>(stats(scope, 'goals')),
+  properties: (scope: Scope, event: string) =>
+    get<EventProperties>(stats(scope, 'properties', { event })),
+  property: (scope: Scope, event: string, key: string, limit = 10) =>
+    get<EventProperty>(stats(scope, 'property', { event, key, limit: String(limit) })),
   funnels: (scope: Scope) =>
     get<{ funnels: Array<{ id: string; name: string }> }>(stats(scope, 'funnels')),
   funnel: (scope: Scope, id: string) => get<FunnelStats>(stats(scope, 'funnel', { id })),
