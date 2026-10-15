@@ -318,6 +318,7 @@ export type Metric =
   | 'avg_session_seconds'
   | 'conversion_rate'
   | 'revenue'
+  | 'revenue_per_visitor'
 
 /** One detected change. Numbers come from the database; the reading only cites them. */
 export interface Finding {
@@ -355,6 +356,22 @@ export interface ReadingResult {
   } | null
   status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'over_budget' | 'error'
   error?: string
+}
+
+/** Built-in questions, answered from fixed queries the model explains. */
+export const QUESTIONS = {
+  traffic: 'How is traffic?',
+  conversion: 'How is conversion?',
+  channels: 'Which channel brings the best visitors?',
+} as const
+export type Question = keyof typeof QUESTIONS
+
+export interface AnswerResult extends Omit<ReadingResult, 'reading'> {
+  question: Question
+  title: string
+  /** What the answer counts, written by code rather than the model. */
+  definition: string
+  answer: ReadingResult['reading']
 }
 
 export type ReplayReason =
@@ -578,6 +595,8 @@ export const api = {
   funnel: (scope: Scope, id: string) => get<FunnelStats>(stats(scope, 'funnel', { id })),
   reading: (scope: Scope, refresh = false) =>
     get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
+  question: (scope: Scope, q: Question, refresh = false) =>
+    get<AnswerResult>(stats(scope, 'question', refresh ? { q, refresh: '1' } : { q })),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
   replayDigest: (scope: Scope, refresh = false) =>
     get<ReplayDigest>(stats(scope, 'replays/digest', refresh ? { refresh: '1' } : {})),

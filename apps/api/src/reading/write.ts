@@ -25,7 +25,7 @@ export interface Reading {
 }
 
 /** Structure only: structured outputs reject length and count limits, so those are applied below. */
-const Output = z.object({
+export const Output = z.object({
   headline: z.string(),
   claims: z.array(z.object({ text: z.string(), evidence: z.array(z.string()) })),
 })
@@ -87,6 +87,19 @@ export async function writeReading(
     schema: Output,
   })
 
+  return vetted(output, findings, range, env.READING_MODEL)
+}
+
+/**
+ * The model's claims that hold up: each cites known findings and quotes only numbers they contain.
+ * Shared with the answers to built-in questions, which cite findings the same way.
+ */
+export function vetted(
+  output: z.infer<typeof Output>,
+  findings: Finding[],
+  range: DateRange,
+  model: string,
+): Reading {
   const byId = new Map(findings.map((f) => [f.id, f]))
   const rangeText = `${days(range)} days ${shortDay(range.from)} ${shortDay(range.to)}`
   const claims = output.claims.slice(0, MAX_CLAIMS).flatMap((claim) => {
@@ -106,5 +119,5 @@ export async function writeReading(
     ? (claims[0]?.text ?? '')
     : output.headline
 
-  return { headline, claims, model: env.READING_MODEL, generatedAt: new Date().toISOString() }
+  return { headline, claims, model, generatedAt: new Date().toISOString() }
 }

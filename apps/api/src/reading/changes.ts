@@ -15,6 +15,8 @@ export type Metric =
   | 'conversion_rate'
   /** Net revenue in minor units of `Finding.currency`. */
   | 'revenue'
+  /** Net revenue per visitor, in minor units of `Finding.currency`. */
+  | 'revenue_per_visitor'
 
 export type Subject =
   | { kind: 'total' }

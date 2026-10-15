@@ -236,7 +236,7 @@ export const semanticDismissals = pgTable(
 
 export type DraftSchedule = 'off' | 'daily' | 'weekly'
 export type DraftApply = 'review' | 'auto'
-export type AiKind = 'reading' | 'summary' | 'digest' | 'semantics'
+export type AiKind = 'reading' | 'question' | 'summary' | 'digest' | 'semantics'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect

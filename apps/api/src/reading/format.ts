@@ -25,6 +25,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   avg_session_seconds: 'average session time',
   conversion_rate: 'conversion rate (share of visitors who triggered it)',
   revenue: 'revenue (net of refunds)',
+  revenue_per_visitor: 'revenue per visitor (net of refunds)',
 }
 
 export function count(n: number): string {
@@ -68,7 +69,7 @@ export function money(minor: number, currency: string): string {
 }
 
 export function value(metric: Metric, x: number, currency = 'USD'): string {
-  if (metric === 'revenue') return money(x, currency)
+  if (metric === 'revenue' || metric === 'revenue_per_visitor') return money(x, currency)
   if (metric === 'bounce_rate') return percent(x)
   if (metric === 'conversion_rate') return percent(x, 1)
   if (metric === 'avg_session_seconds') return seconds(x)
@@ -91,7 +92,7 @@ export function describe(f: Finding): string {
     `  now ${value(f.metric, f.current, f.currency)}, before ${value(f.metric, f.previous, f.currency)}, change ${signed(f.change)}`,
   ]
   if (f.baseline !== undefined)
-    lines.push(`  among all visitors in scope it is ${value(f.metric, f.baseline)}`)
+    lines.push(`  among all visitors in scope it is ${value(f.metric, f.baseline, f.currency)}`)
   if (f.share !== undefined)
     lines.push(`  accounts for ${percent(f.share)} of the total visitor change`)
   if (f.since) lines.push(`  the shift starts on ${shortDay(f.since)}`)

@@ -144,7 +144,11 @@ Next:
    admins add or turn down each goal and funnel or let new ones apply on their own. A drafted
    name that a person removed or turned down is never added again on its own, and an existing
    rule is never replaced. Readings and replay summaries use the latest draft where `sites/` has
-   no catalog. Next: the built-in questions, then gaps from blind-spot signals.
+   no catalog. The built-in questions are answered in the reading panel ("Traffic",
+   "Conversion", "Best channel"), each from fixed queries with the definition code wrote,
+   asked only when picked and cached like readings. Conversion is the catalog's key events, else
+   what the draft marks primary, else the goals with the most visitors, and the definition says
+   which. Next: gaps from blind-spot signals.
 2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
    AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
    through the id passed from the browser, as with `recount.ids()`; an MCP server with

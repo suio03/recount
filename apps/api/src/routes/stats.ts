@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { atLeast } from '../auth'
 import { db } from '../db/postgres'
 import { funnels, goals, type Role, type Site } from '../db/schema'
+import { answerFor, QUESTIONS, type Question } from '../questions'
 import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
@@ -222,6 +223,22 @@ statsRoutes.get('/reading', async (c) => {
   const refresh = refreshOf(c)
   if (refresh === null) return c.json({ error: 'only admins can refresh' }, 403)
   return c.json(await readingFor(scope, { refresh }))
+})
+
+/**
+ * One built-in question answered: fixed queries, the definition they use, and the AI explanation
+ * of their figures. `refresh=1` rewrites a cached answer. Not for the realtime view.
+ */
+statsRoutes.get('/question', async (c) => {
+  const q = c.req.query('q') ?? ''
+  if (!Object.hasOwn(QUESTIONS, q))
+    return c.json({ error: `q: one of ${Object.keys(QUESTIONS).join(', ')}` }, 400)
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined)
+    return c.json({ error: 'questions are not answered for the realtime view' }, 400)
+  const refresh = refreshOf(c)
+  if (refresh === null) return c.json({ error: 'only admins can refresh' }, 403)
+  return c.json(await answerFor(q as Question, scope, { refresh }))
 })
 
 /** Recorded sessions in scope with their AI summaries, newest first. */

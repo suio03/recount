@@ -1,7 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { api, type Filters, type Finding, type ReadingResult, type Scope, type Site } from '../api'
+import {
+  type AnswerResult,
+  api,
+  type Filters,
+  type Finding,
+  QUESTIONS,
+  type Question,
+  type ReadingResult,
+  type Scope,
+  type Site,
+} from '../api'
 import { cx } from '../ui/cx'
 import { Delta } from '../ui/Delta'
 import { AiSwitch } from './AiSwitch'
@@ -15,10 +25,35 @@ const TOTAL_LABELS = {
   avg_session_seconds: 'Session time',
   conversion_rate: 'Conversion',
   revenue: 'Revenue',
+  revenue_per_visitor: 'Revenue per visitor',
 } as const
+
+/** What a segment's figure is, after its name; visitors need no word. */
+const SEGMENT_METRICS: Partial<Record<Finding['metric'], string>> = {
+  pageviews: 'pageviews',
+  bounce_rate: 'bounce rate',
+  avg_session_seconds: 'session time',
+  revenue: 'revenue',
+  revenue_per_visitor: 'revenue per visitor',
+}
+
+/** Short labels for the question picker; the full question heads its answer. */
+const ASKS: Array<{ value: Question | 'changes'; label: string }> = [
+  { value: 'changes', label: 'What changed' },
+  { value: 'traffic', label: 'Traffic' },
+  { value: 'conversion', label: 'Conversion' },
+  { value: 'channels', label: 'Best channel' },
+]
 
 const day = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 const time = new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' })
+
+/** Cents matter per visitor, so this keeps the currency's minor digits. */
+function perVisitor(minor: number, currency: string) {
+  const format = new Intl.NumberFormat('en', { style: 'currency', currency })
+  const digits = format.resolvedOptions().maximumFractionDigits ?? 2
+  return format.format(minor / 10 ** digits)
+}
 
 /** A value of the finding's metric, formatted like the rest of the dashboard. */
 function formatted(f: Finding, x: number) {
@@ -26,6 +61,7 @@ function formatted(f: Finding, x: number) {
   if (f.metric === 'bounce_rate') return percent(x)
   if (f.metric === 'avg_session_seconds') return duration(x)
   if (f.metric === 'revenue') return money(x, f.currency ?? 'USD', { compact: true })
+  if (f.metric === 'revenue_per_visitor') return perVisitor(x, f.currency ?? 'USD')
   return compact(x)
 }
 
@@ -59,7 +95,9 @@ function Subject({ finding: f }: { finding: Finding }) {
     <span className="min-w-0 truncate">
       <span className="text-muted">{label} </span>
       <span className={cx(mono && 'font-mono text-path')}>{value}</span>
-      {f.metric === 'revenue' && <span className="text-muted"> revenue</span>}
+      {SEGMENT_METRICS[f.metric] && (
+        <span className="text-muted"> {SEGMENT_METRICS[f.metric]}</span>
+      )}
     </span>
   )
 }
@@ -88,17 +126,33 @@ export function ReadingPanel({
 }) {
   const queryClient = useQueryClient()
   const [refreshing, setRefreshing] = useState(false)
-  const query = useQuery({
+  const [asked, setAsked] = useState<Question | 'changes'>('changes')
+  const reading = useQuery({
     queryKey: ['reading', scope],
     queryFn: () => api.reading(scope),
     // Asking again is cheap: the server returns its cached reading until that one expires.
     staleTime: 5 * 60_000,
+    enabled: asked === 'changes',
   })
+  // A question is answered only once asked, since each answer costs a model call.
+  const question = asked === 'changes' ? undefined : asked
+  const answer = useQuery({
+    queryKey: ['question', scope, question],
+    queryFn: () => api.question(scope, question as Question),
+    staleTime: 5 * 60_000,
+    enabled: question !== undefined,
+  })
+  const query = question ? answer : reading
 
   async function refresh() {
     setRefreshing(true)
     try {
-      queryClient.setQueryData(['reading', scope], await api.reading(scope, true))
+      if (question)
+        queryClient.setQueryData(
+          ['question', scope, question],
+          await api.question(scope, question, true),
+        )
+      else queryClient.setQueryData(['reading', scope], await api.reading(scope, true))
     } finally {
       setRefreshing(false)
     }
@@ -110,25 +164,46 @@ export function ReadingPanel({
       className="grid min-w-0 content-start gap-4 rounded-md border border-line bg-surface p-4 lg:absolute lg:inset-0 lg:overflow-y-auto"
       aria-busy={query.isFetching || refreshing}
     >
-      <header className="flex min-h-7 items-center justify-between gap-3">
-        <h2 className="m-0 text-body font-semibold">The reading</h2>
-        <div className="flex items-center gap-1">
-          {data?.status === 'ok' && canEnable && (
+      <header className="grid gap-3">
+        <div className="flex min-h-7 items-center justify-between gap-3">
+          <h2 className="m-0 text-body font-semibold">The reading</h2>
+          <div className="flex items-center gap-1">
+            {data?.status === 'ok' && canEnable && (
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={refreshing}
+                aria-label={question ? 'Rewrite the answer' : 'Rewrite the reading'}
+                title={question ? 'Rewrite the answer' : 'Rewrite the reading'}
+                className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink disabled:cursor-default"
+              >
+                <RefreshCw
+                  className={cx('size-3.5', refreshing && 'animate-spin')}
+                  strokeWidth={1.75}
+                />
+              </button>
+            )}
+            {canEnable && <AiSwitch site={site} />}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="What to read">
+          {ASKS.map((a) => (
             <button
+              key={a.value}
               type="button"
-              onClick={refresh}
-              disabled={refreshing}
-              aria-label="Rewrite the reading"
-              title="Rewrite the reading"
-              className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink disabled:cursor-default"
+              aria-pressed={asked === a.value}
+              title={a.value === 'changes' ? 'What changed and why' : QUESTIONS[a.value]}
+              onClick={() => setAsked(a.value)}
+              className={cx(
+                'h-7 cursor-pointer rounded-sm border px-2.5 text-label',
+                asked === a.value
+                  ? 'border-ink bg-ink font-medium text-surface'
+                  : 'border-line text-muted hover:bg-sunken hover:text-ink',
+              )}
             >
-              <RefreshCw
-                className={cx('size-3.5', refreshing && 'animate-spin')}
-                strokeWidth={1.75}
-              />
+              {a.label}
             </button>
-          )}
-          {canEnable && <AiSwitch site={site} />}
+          ))}
         </div>
       </header>
 
@@ -168,29 +243,36 @@ function isOpen(to: string, timezone: string) {
   return to >= new Date().toLocaleDateString('en-CA', { timeZone: timezone })
 }
 
+/**
+ * A reading or an answer: the model's claims, then the figures they cite. An answer also says
+ * what it counts, in the definition code wrote, between the question and the figures.
+ */
 function Body({
   data,
   open,
   canEnable,
   onShow,
 }: {
-  data: ReadingResult
+  data: ReadingResult | AnswerResult
   /** The range includes today, so the totals above keep moving after the reading was written. */
   open: boolean
   canEnable: boolean
   onShow: (filters: Filters) => void
 }) {
   const byId = new Map(data.findings.map((f) => [f.id, f]))
-  const reading = data.reading
+  const answer = 'question' in data ? data : undefined
+  const reading = answer ? answer.answer : (data as ReadingResult).reading
+  const what = answer ? 'these numbers' : 'these changes'
   return (
     <>
+      {answer && <h3 className="m-0 text-body font-semibold">{answer.title}</h3>}
       {reading && (
-        <div className="grid gap-3 font-serif">
+        <div className="grid min-w-0 gap-3 font-serif">
           {reading.headline && <p className="m-0 text-lead font-semibold">{reading.headline}</p>}
           {reading.claims.map((claim) => (
-            <div key={claim.text} className="grid gap-1.5">
+            <div key={claim.text} className="grid min-w-0 gap-1.5">
               <p className="m-0 text-note">{claim.text}</p>
-              <div className="flex flex-wrap gap-1.5 font-sans">
+              <div className="flex min-w-0 flex-wrap gap-1.5 font-sans">
                 {claim.evidence.map((id) => {
                   const f = byId.get(id)
                   return f && <Evidence key={id} finding={f} onShow={onShow} />
@@ -203,14 +285,14 @@ function Body({
 
       {data.status === 'off' && (
         <p className="m-0 text-muted">
-          AI analysis is off for this site, so these changes are not explained.{' '}
+          AI analysis is off for this site, so {what} are not explained.{' '}
           {canEnable ? 'Switch it on above.' : 'An admin of this site can turn it on.'}
         </p>
       )}
       {data.status === 'unconfigured' && (
         <p className="m-0 text-muted">
           Set <code className="font-mono text-path">ANTHROPIC_API_KEY</code> in{' '}
-          <code className="font-mono text-path">.env</code> to have these changes explained.
+          <code className="font-mono text-path">.env</code> to have {what} explained.
         </p>
       )}
       {data.status === 'key_rejected' && (
@@ -222,24 +304,29 @@ function Body({
       )}
       {data.status === 'no_credit' && (
         <p className="m-0 text-muted" title={data.error}>
-          The Claude account is out of credit. Add credit in the Claude Console to have these
-          changes explained.
+          The Claude account is out of credit. Add credit in the Claude Console to have {what}{' '}
+          explained.
         </p>
       )}
       {data.status === 'over_budget' && (
         <p className="m-0 text-muted">
-          Today&apos;s AI budget is spent, so these changes are explained again tomorrow (UTC). The
+          Today&apos;s AI budget is spent, so {what} are explained again tomorrow (UTC). The
           day&apos;s spend is under Account → Usage.
         </p>
       )}
       {data.status === 'error' && (
         <p className="m-0 text-muted" title={data.error}>
-          The reading could not be written this time. The changes below are still current.
+          The {answer ? 'answer' : 'reading'} could not be written this time. The{' '}
+          {answer ? 'numbers' : 'changes'} below are still current.
         </p>
       )}
 
+      {answer && <p className="m-0 text-label text-muted">{answer.definition}</p>}
+
       <div className="grid gap-1">
-        <h3 className="m-0 text-label font-medium text-muted">What changed</h3>
+        <h3 className="m-0 text-label font-medium text-muted">
+          {answer ? 'The numbers' : 'What changed'}
+        </h3>
         {data.findings.length === 0 ? (
           <p className="m-0 text-muted">Nothing moved enough to report.</p>
         ) : (
@@ -278,9 +365,9 @@ function Body({
       {reading && (
         <p className="m-0 text-label text-muted">
           Written by {reading.model} at {time.format(new Date(reading.generatedAt))}. Every figure
-          comes from the changes listed above
+          comes from the {answer ? 'numbers' : 'changes'} listed above
           {open
-            ? ', counted at that time; the totals above include visits since, and the reading is rewritten every hour.'
+            ? `, counted at that time; the totals above include visits since, and the ${answer ? 'answer is rewritten when asked after an hour' : 'reading is rewritten every hour'}.`
             : '.'}
         </p>
       )}

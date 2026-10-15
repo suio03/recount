@@ -31,8 +31,8 @@ export interface ReadingResponse {
  * dashboard's totals update every few seconds, so its reading is rewritten sooner and the two
  * do not drift far apart; a closed range barely moves.
  */
-const OPEN_TTL_MS = 60 * 60 * 1000
-const CLOSED_TTL_MS = 6 * 60 * 60 * 1000
+export const OPEN_TTL_MS = 60 * 60 * 1000
+export const CLOSED_TTL_MS = 6 * 60 * 60 * 1000
 
 const inFlight = new Map<string, Promise<ReadingResponse>>()
 

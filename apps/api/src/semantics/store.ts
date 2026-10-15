@@ -148,6 +148,50 @@ export async function semanticsOf(site: Site): Promise<SiteSemantics | undefined
   }
 }
 
+/**
+ * What conversion means for a site when a question asks about it: the key events of its catalog
+ * in `sites/`, else what the latest draft marks primary (custom events, and drafted goals once
+ * added), else nothing, and the caller falls back to the goals with the most visitors.
+ * `skipped` names primary conversions the draft found that are not added as goals yet.
+ */
+export interface ConversionDefinition {
+  names: string[]
+  source: 'catalog' | 'draft' | 'none'
+  draftedAt?: string
+  skipped: string[]
+}
+
+export async function conversionDefinition(
+  site: Site,
+  defined: Array<{ name: string; match: unknown }>,
+): Promise<ConversionDefinition> {
+  const written = semanticsFor(site.domain)
+  const keyEvents = written?.events.filter((e) => e.key).map((e) => e.name) ?? []
+  if (keyEvents.length) return { names: keyEvents, source: 'catalog', skipped: [] }
+  const row = await db.query.semanticDrafts.findFirst({
+    where: and(eq(semanticDrafts.siteId, site.id), isNotNull(semanticDrafts.body)),
+    orderBy: desc(semanticDrafts.createdAt),
+  })
+  const names = new Set<string>()
+  const skipped: string[] = []
+  for (const c of row?.body?.conversions.filter((c) => c.primary) ?? []) {
+    if (c.match.kind === 'event') {
+      names.add(c.match.name)
+      continue
+    }
+    const goal = defined.find((g) => sameRule(g.match, c.match))
+    if (goal) names.add(goal.name)
+    else skipped.push(c.name)
+  }
+  if (!row || (!names.size && !skipped.length)) return { names: [], source: 'none', skipped }
+  return {
+    names: [...names],
+    source: names.size ? 'draft' : 'none',
+    draftedAt: row.createdAt.toISOString(),
+    skipped,
+  }
+}
+
 export class DraftError extends Error {}
 
 /** Adds one drafted goal or funnel by name, from the latest draft; a person asking clears a dismissal. */

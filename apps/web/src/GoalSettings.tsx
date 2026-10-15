@@ -40,6 +40,7 @@ const SCOPED_BY_GOALS = new Set([
   'goals',
   'funnel',
   'reading',
+  'question',
   'replays',
   'replayDigest',
 ])
