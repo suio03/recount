@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { days, intervalOf, previousRange, RangeQuery } from './range'
+import { days, intervalOf, isOpen, previousRange, RangeQuery } from './range'
 
 describe('previousRange', () => {
   it('returns the same number of days ending the day before', () => {
@@ -46,5 +46,19 @@ describe('previousRange for realtime', () => {
       since: since - 30 * 60_000,
       until: since,
     })
+  })
+})
+
+describe('isOpen', () => {
+  // 02:00 UTC on Oct 15 is still Oct 14 in Los Angeles.
+  const now = new Date('2026-10-15T02:00:00Z')
+
+  it('counts a range ending today in the site timezone as still moving', () => {
+    expect(isOpen({ from: '2026-09-16', to: '2026-10-15' }, 'UTC', now)).toBe(true)
+    expect(isOpen({ from: '2026-09-15', to: '2026-10-14' }, 'America/Los_Angeles', now)).toBe(true)
+  })
+
+  it('treats a range that ended before today as closed', () => {
+    expect(isOpen({ from: '2026-09-15', to: '2026-10-14' }, 'UTC', now)).toBe(false)
   })
 })

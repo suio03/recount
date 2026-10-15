@@ -40,6 +40,11 @@ export function days({ from, to }: DateRange): number {
   return Math.round((Date.parse(to) - Date.parse(from)) / DAY) + 1
 }
 
+/** Whether the range ends today or later in the site's timezone, so its numbers still move. */
+export function isOpen(range: DateRange, timezone: string, now = new Date()) {
+  return range.to >= now.toLocaleDateString('en-CA', { timeZone: timezone })
+}
+
 /** Minutes for the realtime view, hours for one day, months past a quarter, days otherwise. */
 export function intervalOf(range: DateRange): Interval {
   if (range.since !== undefined) return 'minute'

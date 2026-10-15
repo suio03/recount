@@ -7,6 +7,7 @@ import { db } from '../db/postgres'
 import { readings } from '../db/schema'
 import { env } from '../env'
 import type { Scope } from '../stats/queries'
+import { isOpen } from '../stats/range'
 import type { Finding } from './changes'
 import { detectChanges } from './detect'
 import { PROMPT_VERSION, type Reading, writeReading } from './write'
@@ -25,8 +26,13 @@ export interface ReadingResponse {
   error?: string
 }
 
-/** Readings are rewritten after this long, so today's partial data is not frozen for a day. */
-const TTL_MS = 6 * 60 * 60 * 1000
+/**
+ * Readings are rewritten after this long. A range that includes today keeps counting while the
+ * dashboard's totals update every few seconds, so its reading is rewritten sooner and the two
+ * do not drift far apart; a closed range barely moves.
+ */
+const OPEN_TTL_MS = 60 * 60 * 1000
+const CLOSED_TTL_MS = 6 * 60 * 60 * 1000
 
 const inFlight = new Map<string, Promise<ReadingResponse>>()
 
@@ -67,8 +73,9 @@ export async function readingFor(scope: Scope, { refresh = false } = {}): Promis
   const key = cacheKey(scope)
   // Past today's budget a refresh keeps the cached copy rather than replacing it with nothing.
   if (!refresh || !(await withinBudget(scope.site.orgId))) {
+    const ttl = isOpen(scope.range, scope.site.timezone) ? OPEN_TTL_MS : CLOSED_TTL_MS
     const cached = await db.query.readings.findFirst({
-      where: and(eq(readings.key, key), gt(readings.createdAt, new Date(Date.now() - TTL_MS))),
+      where: and(eq(readings.key, key), gt(readings.createdAt, new Date(Date.now() - ttl))),
     })
     if (cached) return cached.body as ReadingResponse
   }

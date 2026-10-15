@@ -79,7 +79,7 @@ export function ReadingPanel({
   canEnable,
   onShow,
 }: {
-  site: Pick<Site, 'id' | 'ai'>
+  site: Pick<Site, 'id' | 'ai' | 'timezone'>
   scope: Scope
   /** Whether the viewer is an admin, who can switch AI on and rewrite the reading. */
   canEnable: boolean
@@ -91,8 +91,8 @@ export function ReadingPanel({
   const query = useQuery({
     queryKey: ['reading', scope],
     queryFn: () => api.reading(scope),
-    staleTime: 10 * 60_000,
-    refetchOnWindowFocus: false,
+    // Asking again is cheap: the server returns its cached reading until that one expires.
+    staleTime: 5 * 60_000,
   })
 
   async function refresh() {
@@ -137,7 +137,12 @@ export function ReadingPanel({
       ) : !data || refreshing ? (
         <Loading />
       ) : (
-        <Body data={data} canEnable={canEnable} onShow={onShow} />
+        <Body
+          data={data}
+          open={isOpen(scope.range.to, site.timezone)}
+          canEnable={canEnable}
+          onShow={onShow}
+        />
       )}
     </aside>
   )
@@ -158,12 +163,20 @@ function Loading() {
   )
 }
 
+/** Whether the range ends today or later in the site's timezone, so its numbers still move. */
+function isOpen(to: string, timezone: string) {
+  return to >= new Date().toLocaleDateString('en-CA', { timeZone: timezone })
+}
+
 function Body({
   data,
+  open,
   canEnable,
   onShow,
 }: {
   data: ReadingResult
+  /** The range includes today, so the totals above keep moving after the reading was written. */
+  open: boolean
   canEnable: boolean
   onShow: (filters: Filters) => void
 }) {
@@ -265,7 +278,10 @@ function Body({
       {reading && (
         <p className="m-0 text-label text-muted">
           Written by {reading.model} at {time.format(new Date(reading.generatedAt))}. Every figure
-          comes from the changes listed above.
+          comes from the changes listed above
+          {open
+            ? ', counted at that time; the totals above include visits since, and the reading is rewritten every hour.'
+            : '.'}
         </p>
       )}
     </>
