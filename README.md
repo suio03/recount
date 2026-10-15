@@ -88,7 +88,7 @@ Checks: `pnpm typecheck`, `pnpm test`, `pnpm lint`.
 | Variable | Default | What |
 |---|---|---|
 | `DATABASE_URL`, `CLICKHOUSE_*` | see `.env.example` | Database connections |
-| `PUBLIC_URL` | `http://localhost:8787` | Where the API is reached; the dev dashboard proxies to it |
+| `PUBLIC_URL` | unset in the image | Where the API is reached: the dev dashboard proxies to it, and the tracking rules, MCP config and AGENTS.md lines name it. Unset, the address each request came in on is used |
 | `ENCRYPTION_KEY` | unset | Encrypts payment provider keys entered in the dashboard. Any random string of 32+ characters, e.g. `openssl rand -base64 32`. Changing it makes stored keys unreadable |
 | `ANTHROPIC_API_KEY` | unset | Enables AI analysis. Without it, AI-enabled sites show only the detected changes |
 | `READING_MODEL` | `claude-sonnet-5-5` | Model for readings and cross-session patterns |
@@ -154,6 +154,34 @@ and markup can add meaning:
 | `data-rc-section="Name"` | Names a region; clicks inside it carry the section name |
 | `data-rc-mask` | Element text inside is never sent |
 | `<meta name="recount:page-type" content="pricing">` | The page's semantic type |
+
+Personal data never belongs in properties: a browser event drops a property named like a contact
+detail or holding an email, phone, card or IP address.
+
+### Server-side events
+
+An outcome only the server sees, such as a signup confirmed or an order paid, is sent with an API
+key scoped to server events, joined to the visit by the ids the browser's `recount.ids()` returned:
+
+```sh
+curl -X POST https://recount.example.com/api/server/events \
+  -H "Authorization: Bearer $RECOUNT_INGEST_KEY" -H 'Content-Type: application/json' \
+  -d '{"site":"example.com","name":"Signup Completed","ids":{"recount_vid":"…","recount_sid":"…"},"props":{"plan":"pro"}}'
+```
+
+It answers 202, or what is wrong: 400 for a bad body or a timestamp older than 7 days, 404 for a
+site outside the key's team, 422 naming properties that look personal. Cookie mode only.
+
+### Coding agents
+
+Coding agents (Claude Code, Cursor, Codex) add tracking by the rules at `/llms.txt`: what is
+recorded already, when code is needed, naming, and no personal data. Site settings → Coding agents
+gives the lines for the project's AGENTS.md and the command to connect the MCP server at `/mcp`
+(Streamable HTTP) with a key scoped to coding agents, which reads data and defines events only.
+Its tools: `list_sites`, `get_install`, `get_tracking_rules`, `list_tracking_gaps` (the latest
+draft's gaps, with whether each event is defined and arriving), `verify_event`, `define_event` and
+`answer_question`. What agents define is listed there too, and used by readings, drafts and answers
+like the catalog in `sites/`, which wins where both name an event.
 
 ### Goals and funnels
 
@@ -231,7 +259,9 @@ image and stops there.
 
 People sign in with email and password. Each team (org) owns sites and gives its members a role:
 viewers see the dashboards, admins also manage sites, members, invites and API keys, owners also
-give and take away ownership. Account → Team creates an invite link to send by hand; there is no
+give and take away ownership. An API key has a scope: admin (what an admin can do, for scripts),
+coding agent (reads data and defines events, through the MCP server) or server events (sends
+events only). Account → Team creates an invite link to send by hand; there is no
 email sending yet. Someone who forgot their password asks whoever runs the server, who sets a new
 one and signs that person out everywhere:
 

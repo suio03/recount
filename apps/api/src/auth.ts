@@ -5,14 +5,32 @@ import type { Context, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { clientIp } from './client-ip'
 import { db } from './db/postgres'
-import { apiKeys, memberships, orgs, type Role, type User, userSessions, users } from './db/schema'
+import {
+  apiKeys,
+  type KeyScope,
+  memberships,
+  orgs,
+  type Role,
+  type User,
+  userSessions,
+  users,
+} from './db/schema'
 import { env } from './env'
 
 /**
  * Who is calling the private API: a person, through the session cookie the dashboard gets at
  * sign-in, or a script with an org's API key (`Bearer rc_...`), acting as an admin of that org.
+ * Keys scoped to agents or ingestion are refused there; they have endpoints of their own.
  */
 export type Principal = { kind: 'user'; user: User } | { kind: 'key'; orgId: string }
+
+/** An API key with what it may do, for the endpoints that take keys of every scope. */
+export interface KeyPrincipal {
+  kind: 'key'
+  orgId: string
+  scope: KeyScope
+  name: string
+}
 
 export type AuthEnv = { Variables: { principal: Principal } }
 
@@ -94,13 +112,29 @@ export function checkSetupCode(c: Context, guess: string): Check {
   return 'wrong'
 }
 
-async function fromKey(key: string): Promise<Principal | undefined> {
+async function fromKey(key: string): Promise<KeyPrincipal | undefined> {
   const [row] = await db
     .update(apiKeys)
     .set({ lastUsedAt: new Date() })
     .where(eq(apiKeys.keyHash, hashToken(key)))
-    .returning({ orgId: apiKeys.orgId })
-  return row && { kind: 'key', orgId: row.orgId }
+    .returning({ orgId: apiKeys.orgId, scope: apiKeys.scope, name: apiKeys.name })
+  return row && { kind: 'key', ...row }
+}
+
+/**
+ * The key in `Authorization: Bearer rc_...` when its scope is one of `scopes`. Keys are 32
+ * random bytes, so they cannot be guessed and wrong ones are not counted.
+ */
+export async function keyFrom(
+  c: Context,
+  scopes: KeyScope[],
+): Promise<KeyPrincipal | 'missing' | 'wrong' | 'scope'> {
+  const header = c.req.header('Authorization')
+  if (!header?.startsWith('Bearer ')) return 'missing'
+  const secret = header.slice(7).trim()
+  const key = secret.startsWith(KEY_PREFIX) ? await fromKey(secret) : undefined
+  if (!key) return 'wrong'
+  return scopes.includes(key.scope) ? key : 'scope'
 }
 
 async function fromSession(token: string): Promise<Principal | undefined> {
@@ -146,14 +180,13 @@ async function autoLogin(c: Context): Promise<Principal | undefined> {
   return { kind: 'user', user }
 }
 
-type Resolved = Principal | 'missing' | 'wrong' | 'blocked'
+type Resolved = Principal | 'missing' | 'wrong' | 'blocked' | 'scope'
 
 async function resolve(c: Context): Promise<Resolved> {
   const header = c.req.header('Authorization')
   if (header?.startsWith('Bearer ')) {
-    // Keys are 32 random bytes, so they cannot be guessed and wrong ones are not counted.
-    const secret = header.slice(7)
-    return (secret.startsWith(KEY_PREFIX) && (await fromKey(secret))) || 'wrong'
+    const key = await keyFrom(c, ['admin'])
+    return typeof key === 'string' ? key : { kind: 'key', orgId: key.orgId }
   }
   const cookie = getCookie(c, COOKIE)
   if (cookie === undefined) return (await autoLogin(c)) ?? 'missing'
@@ -167,6 +200,7 @@ async function resolve(c: Context): Promise<Resolved> {
 export const requireAuth: MiddlewareHandler<AuthEnv> = async (c, next) => {
   const result = await resolve(c)
   if (result === 'blocked') return c.json({ error: 'too many attempts' }, 429)
+  if (result === 'scope') return c.json({ error: 'this key is not an admin key' }, 403)
   if (typeof result === 'string') return c.json({ error: 'unauthorized' }, 401)
   c.set('principal', result)
   await next()

@@ -88,7 +88,7 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 
 ## Roadmap
 
-Updated 2026-10-15.
+Updated 2026-10-16.
 
 Done:
 
@@ -119,58 +119,39 @@ Done:
     its values by visitors and events; a property whose values are all numbers also shows its
     median, middle half, range and a histogram over events. A value filters the dashboard
     (`prop=<key>=<value>`) to sessions with an event carrying it, whatever the event.
+14. **Semantics drafted by AI**: on each site's schedule (daily or weekly) or with "Draft now",
+    code lists what the site's data holds and the model drafts goals and funnels with the
+    evidence behind each; code drops drafts that match nothing. Drafts are stored per site (the
+    last 10) and reviewed under "Drafted by AI" in site settings, or apply on their own; a name a
+    person removed or turned down is never added again, and an existing rule is never replaced.
+    Readings and replay summaries use the latest draft where `sites/` has no catalog. Built-in
+    questions ("Traffic", "Conversion", "Best channel") are answered in the reading panel from
+    fixed queries, stating the definition code used. Tracking gaps start from blind-spot signals
+    in the last 30 days (long stays with little tracked, clicks on elements with no text,
+    checkout with no payments, forms with nothing after them), each needing 10 visitors or
+    sessions; the draft gives one gap per signal and at most 2 guesses, marked "Guess".
 
 Next:
 
-1. **Semantics drafted by AI, answers to common questions**: on a schedule each site picks (daily
-   or weekly), code lists what the site's data holds (paths, page types, clicked elements by
-   section, outbound domains, custom events) and the model drafts what conversion and the key
-   paths are, as goals and funnels with the evidence behind each. Code drops drafts that match
-   nothing; the rest apply on their own or wait for approval, per site, never overwriting what a
-   person edited or removed. Semantics move from `sites/` into PostgreSQL, with `sites/` kept as
-   overrides. Built-in questions (how is traffic, how is conversion, which channel brings the
-   best visitors) are fixed queries the model explains, stating the definition used. Data the
-   browser cannot see becomes a tracking gap: what is missing, why, and the line of code to add.
-   Gaps start from blind-spot signals that code finds in the data, rather than from what the
-   model guesses a site of its kind should track: pages where visitors stay long but click
-   little (a canvas game, a video, an editor), clicks on elements with no text or label, a
-   checkout reached without payments recorded, a form submitted with no confirmation page after
-   it. The model explains each signal and drafts the event to add; a gap with no signal behind
-   it is marked as a guess.
-   Started: the inventory, the draft and its checks, run from the `semantics` CLI. The seed's
-   `autocapture` demo has the same traffic as `demo` without custom events, to show what a draft
-   finds from pageviews and clicks alone. Drafts are stored per site (the last 10), made on the
-   site's schedule or with "Draft now", and shown under "Drafted by AI" in site settings, where
-   admins add or turn down each goal and funnel or let new ones apply on their own. A drafted
-   name that a person removed or turned down is never added again on its own, and an existing
-   rule is never replaced. Readings and replay summaries use the latest draft where `sites/` has
-   no catalog. The built-in questions are answered in the reading panel ("Traffic",
-   "Conversion", "Best channel"), each from fixed queries with the definition code wrote,
-   asked only when picked and cached like readings. Conversion is the catalog's key events, else
-   what the draft marks primary, else the goals with the most visitors, and the definition says
-   which. Gaps start from the signals code finds in the last 30 days: a page whose median view
-   lasts at least a minute and three times the site's before the visit's next event, clicks on
-   elements with no text or label, checkout pages, buttons or payment hosts with no payments
-   or purchase events recorded, and a form button (Submit, Subscribe, Sign up…) followed by a
-   page or custom event within 2 minutes in at most a fifth of sessions. Each needs 10 visitors
-   or sessions. The draft gives one gap per signal and at most 2 guesses, shown with the signal
-   behind each or marked "Guess"; signals no gap answers are listed too. The seed has one of
-   each kind except checkout, since both demos record payments.
-2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
+1. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
    AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
    through the id passed from the browser, as with `recount.ids()`; an MCP server with
    `get_install`, `get_tracking_rules`, `list_tracking_gaps`, `define_event`, `verify_event` and
    the question tools, so an agent implements a gap, checks the event arrives and registers its
    meaning. Its keys read data and write definitions only, and the server rejects properties
-   that look like personal data.
-3. **Visitor journeys** (planned 2026-10-15): one visitor's visits in order, each as its pages,
+   that look like personal data. Started 2026-10-16: key scopes (admin, agent, ingest),
+   `/api/server/events`, personal-data checks on every ingest path, an `event_definitions` table
+   read with the catalog, `/llms.txt`, the stateless MCP server at `/mcp` with those tools and
+   `answer_question`, and a Coding agents panel in site settings. Still to do: a coding agent's
+   full run on a real site, and editing definitions in the dashboard.
+2. **Visitor journeys** (planned 2026-10-15): one visitor's visits in order, each as its pages,
    clicks and custom events with their properties and times, opened from any breakdown row,
    goal or funnel step to see the people behind a number. Works for every visitor, not only
    recorded sessions, since it reads events; recordings, where they exist, link from the visit.
    Needs cookie mode to join visits; in cookieless mode it shows one day.
-4. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
+3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-5. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
+4. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
    impressions, CTR and position for the queries and landing pages behind organic search, joined
    to Recount by landing page so a query's ranking sits next to what its visitors did afterwards.
    - Google: the Search Analytics API, read with the `webmasters.readonly` scope. Each day is
@@ -198,11 +179,11 @@ Next:
      connecting in the dashboard and the Search panel; then publishing the hosted OAuth app,
      which needs the privacy policy and home page from the hosted service; Bing last. It comes
      after the hosted service because Google keeps 16 months, so waiting loses no data.
-6. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-7. **Attribution**: first touch next to last non-direct touch; Creem sync.
-8. **Digests**: periodic email digests.
-9. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
-10. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
+5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+6. **Attribution**: first touch next to last non-direct touch; Creem sync.
+7. **Digests**: periodic email digests.
+8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+9. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
    conversion with confidence intervals, explained by the model.
 
 ## Known gaps in the skeleton

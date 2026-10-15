@@ -28,7 +28,8 @@ import type { ElementContext, EventPayload, IdentityMode } from '@recount/shared
  *
  * Revenue attribution: put `recount.ids()` in the checkout's custom data (Paddle `customData`,
  * Stripe `metadata`). A server that creates the checkout can read the `rc_vid` and `rc_sid`
- * cookies instead.
+ * cookies instead. The same ids join an event sent from a server (`POST /api/server/events`) to
+ * the visit it belongs to.
  */
 
 type Props = Record<string, string | number | boolean | null | undefined>

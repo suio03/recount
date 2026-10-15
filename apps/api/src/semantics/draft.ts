@@ -134,7 +134,7 @@ Each "why" is one sentence, in words a site owner understands, saying what in th
 
 function prompt(inventory: Inventory, semantics: SiteSemantics | undefined) {
   const known = semantics
-    ? `\nWhat the owner wrote about the site: ${semantics.about}\n${semantics.events
+    ? `\n${semantics.about ? `What the owner wrote about the site: ${semantics.about}\n` : 'Events the owner defined:\n'}${semantics.events
         .map((e) => `- event "${e.name}": ${e.description}`)
         .join('\n')}\n`
     : ''

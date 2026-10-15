@@ -79,7 +79,9 @@ export function CopyBox({ label, value }: { label: string; value: string }) {
     <div className="grid gap-1.5 rounded-sm bg-sunken p-3">
       <span className="text-label text-muted">{label}</span>
       <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 break-all font-mono text-label">{value}</code>
+        <code className="min-w-0 flex-1 whitespace-pre-wrap font-mono [overflow-wrap:anywhere] text-label">
+          {value}
+        </code>
         <button
           type="button"
           aria-label="Copy"

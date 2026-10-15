@@ -1,5 +1,4 @@
 import type { SiteSemantics } from '@recount/semantic'
-import { semanticsFor } from '@recount/sites'
 import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import { db } from '../db/postgres'
 import {
@@ -14,6 +13,7 @@ import {
 } from '../db/schema'
 import { GoalMatch, MAX_FUNNELS, MAX_GOALS, type Match } from '../stats/goals'
 import type { DateRange } from '../stats/range'
+import { ownerSemantics } from './definitions'
 import { type Conversion, type Draft, type DraftFunnel, draftSemantics } from './draft'
 import { inventoryOf } from './inventory'
 
@@ -124,34 +124,48 @@ export async function draftView(site: Site) {
 
 /**
  * What the model is told about a site: the catalog in `sites/` when it has one, which a person
- * wrote and which overrides any draft; otherwise the latest draft's description, with the custom
- * events it names as conversions, the primary ones as key events.
+ * wrote and which overrides any draft, with the events defined since; otherwise the latest
+ * draft's description, with the defined events and the custom events the draft names as
+ * conversions, the primary ones as key events.
  */
 export async function semanticsOf(site: Site): Promise<SiteSemantics | undefined> {
-  const written = semanticsFor(site.domain)
-  if (written) return written
+  const owner = await ownerSemantics(site)
+  if (owner?.about) return owner
   const row = await db.query.semanticDrafts.findFirst({
     where: and(eq(semanticDrafts.siteId, site.id), isNotNull(semanticDrafts.body)),
     orderBy: desc(semanticDrafts.createdAt),
   })
   const draft = row?.body
-  if (!draft?.about) return undefined
+  if (!draft?.about) return owner && { ...owner, about: 'Not described yet.' }
+  const defined = owner?.events ?? []
+  const named = new Set(defined.map((e) => e.name))
   return {
     domain: site.domain,
     about: draft.about,
-    events: draft.conversions.flatMap((c) =>
-      c.match.kind === 'event'
-        ? [{ name: c.match.name, description: c.why, key: c.primary, stage: 'conversion' as const }]
-        : [],
-    ),
+    events: [
+      ...defined,
+      ...draft.conversions.flatMap((c) =>
+        c.match.kind === 'event' && !named.has(c.match.name)
+          ? [
+              {
+                name: c.match.name,
+                description: c.why,
+                key: c.primary,
+                stage: 'conversion' as const,
+              },
+            ]
+          : [],
+      ),
+    ],
     metrics: [],
   }
 }
 
 /**
- * What conversion means for a site when a question asks about it: the key events of its catalog
- * in `sites/`, else what the latest draft marks primary (custom events, and drafted goals once
- * added), else nothing, and the caller falls back to the goals with the most visitors.
+ * What conversion means for a site when a question asks about it: the events marked key in its
+ * catalog in `sites/` or when they were defined, else what the latest draft marks primary
+ * (custom events, and drafted goals once added), else nothing, and the caller falls back to the
+ * goals with the most visitors.
  * `skipped` names primary conversions the draft found that are not added as goals yet.
  */
 export interface ConversionDefinition {
@@ -165,8 +179,8 @@ export async function conversionDefinition(
   site: Site,
   defined: Array<{ name: string; match: unknown }>,
 ): Promise<ConversionDefinition> {
-  const written = semanticsFor(site.domain)
-  const keyEvents = written?.events.filter((e) => e.key).map((e) => e.name) ?? []
+  const owner = await ownerSemantics(site)
+  const keyEvents = owner?.events.filter((e) => e.key).map((e) => e.name) ?? []
   if (keyEvents.length) return { names: keyEvents, source: 'catalog', skipped: [] }
   const row = await db.query.semanticDrafts.findFirst({
     where: and(eq(semanticDrafts.siteId, site.id), isNotNull(semanticDrafts.body)),
@@ -321,7 +335,7 @@ export function runDraft(site: Site): Promise<DraftRow> {
     let body: Draft | null = null
     let error: string | null = null
     try {
-      body = await draftSemantics(site, await inventoryOf(site, range), semanticsFor(site.domain))
+      body = await draftSemantics(site, await inventoryOf(site, range), await ownerSemantics(site))
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
     }

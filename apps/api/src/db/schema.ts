@@ -1,3 +1,4 @@
+import type { FunnelStage, PropertyDefinition } from '@recount/semantic'
 import {
   bigint,
   boolean,
@@ -20,6 +21,12 @@ import type { GoalMatch, Match } from '../stats/goals'
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' })
 
 export type Role = 'owner' | 'admin' | 'viewer'
+
+/**
+ * What an API key may do: act as an admin of its org, read data and define events as a coding
+ * agent, or only send server-side events.
+ */
+export type KeyScope = 'admin' | 'agent' | 'ingest'
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -80,6 +87,7 @@ export const apiKeys = pgTable('api_keys', {
   name: text('name').notNull(),
   keyHash: bytea('key_hash').notNull().unique(),
   prefix: text('prefix').notNull(),
+  scope: text('scope').$type<KeyScope>().notNull().default('admin'),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -233,6 +241,30 @@ export const semanticDismissals = pgTable(
   },
   (t) => [primaryKey({ columns: [t.siteId, t.kind, t.name] })],
 )
+
+/** What a custom event means, registered by a person or a coding agent. */
+export const eventDefinitions = pgTable(
+  'event_definitions',
+  {
+    siteId: uuid('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    stage: text('stage').$type<FunnelStage>(),
+    key: boolean('key').notNull().default(false),
+    properties: jsonb('properties')
+      .$type<Record<string, PropertyDefinition>>()
+      .notNull()
+      .default({}),
+    definedBy: text('defined_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.siteId, t.name] })],
+)
+
+export type EventDefinitionRow = typeof eventDefinitions.$inferSelect
 
 export type DraftSchedule = 'off' | 'daily' | 'weekly'
 export type DraftApply = 'review' | 'auto'

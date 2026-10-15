@@ -39,9 +39,35 @@ export interface InviteInfo {
   hasAccount: boolean
 }
 
+/** What a custom event means, as a person or a coding agent defined it. */
+export interface EventDefinition {
+  name: string
+  description: string
+  stage: 'acquisition' | 'activation' | 'conversion' | 'retention' | 'referral' | null
+  key: boolean
+  properties: Record<string, { type: 'string' | 'number' | 'boolean'; description: string }>
+  /** `key:<name>` for an API key, or a person's email. */
+  definedBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Where coding agents find the rules and the MCP server, and what they have defined. */
+export interface AgentSetup {
+  rules: string
+  mcp: string
+  /** Lines for the project's AGENTS.md. */
+  snippet: string
+  events: EventDefinition[]
+}
+
+/** `admin` acts as an admin of the team; `agent` is for coding agents; `ingest` sends server events. */
+export type KeyScope = 'admin' | 'agent' | 'ingest'
+
 export interface ApiKey {
   id: string
   name: string
+  scope: KeyScope
   /** The key's first characters, to tell keys apart. */
   prefix: string
   lastUsedAt: string | null
@@ -554,6 +580,9 @@ export const api = {
     send<FunnelDefinition>('POST', `/api/sites/${siteId}/funnels`, input),
   deleteFunnel: (siteId: string, id: string) => del(`/api/sites/${siteId}/funnels/${id}`),
   semantics: (siteId: string) => get<Semantics>(`/api/sites/${siteId}/semantics`),
+  agents: (siteId: string) => get<AgentSetup>(`/api/sites/${siteId}/agents`),
+  deleteDefinition: (siteId: string, name: string) =>
+    del(`/api/sites/${siteId}/agents/events/${encodeURIComponent(name)}`),
   draftSemantics: (siteId: string) =>
     send<Semantics>('POST', `/api/sites/${siteId}/semantics/draft`, {}),
   applyDrafted: (siteId: string, kind: 'goal' | 'funnel', name: string) =>
@@ -582,8 +611,8 @@ export const api = {
   removeMember: (orgId: string, userId: string) => del(`/api/orgs/${orgId}/members/${userId}`),
   usage: (orgId: string, month: string) => get<Usage>(`/api/orgs/${orgId}/usage?month=${month}`),
   keys: (orgId: string) => get<ApiKey[]>(`/api/orgs/${orgId}/keys`),
-  createKey: (orgId: string, name: string) =>
-    send<ApiKey & { key: string }>('POST', `/api/orgs/${orgId}/keys`, { name }),
+  createKey: (orgId: string, name: string, scope: KeyScope) =>
+    send<ApiKey & { key: string }>('POST', `/api/orgs/${orgId}/keys`, { name, scope }),
   deleteKey: (orgId: string, id: string) => del(`/api/orgs/${orgId}/keys/${id}`),
   main: (scope: Scope) => get<MainStats>(stats(scope, 'main')),
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>

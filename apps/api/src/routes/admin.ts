@@ -19,6 +19,7 @@ import { iconResponse } from '../icons/store'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
 import { currentVisitors, rows } from '../stats/queries'
+import { agentRoutes } from './agents'
 import { funnelRoutes, goalRoutes } from './goals'
 import { revenueRoutes } from './revenue'
 import { semanticsRoutes } from './semantics'
@@ -275,6 +276,7 @@ adminRoutes.route('/api/sites/:id/revenue', revenueRoutes)
 adminRoutes.route('/api/sites/:id/goals', goalRoutes)
 adminRoutes.route('/api/sites/:id/funnels', funnelRoutes)
 adminRoutes.route('/api/sites/:id/semantics', semanticsRoutes)
+adminRoutes.route('/api/sites/:id/agents', agentRoutes)
 
 /** A session's recording, for the replay player. Offsets count from its first event. */
 adminRoutes.get('/api/sites/:id/replays/:session', async (c) => {

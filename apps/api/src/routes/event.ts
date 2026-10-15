@@ -6,12 +6,13 @@ import { clientCountry, clientIp } from '../client-ip'
 import { clickhouse } from '../db/clickhouse'
 import { parseAcquisition, parseDevice } from '../ingest/enrich'
 import { resolveIdentity } from '../ingest/identity'
+import { withoutPersonal } from '../ingest/personal'
 import { siteByDomain } from '../sites'
 
 export const eventRoutes = new Hono()
 
 /** Formats a Date as ClickHouse DateTime64(3) text in UTC. */
-const chTime = (d: Date) => d.toISOString().replace('T', ' ').replace('Z', '')
+export const chTime = (d: Date) => d.toISOString().replace('T', ' ').replace('Z', '')
 
 /** A pageview or click is well under 4 KB; the cap keeps a hostile POST out of memory. */
 const MAX_BODY = 64 * 1024
@@ -93,7 +94,8 @@ eventRoutes.post(
           element_label: payload.el?.label ?? '',
           element_href: payload.el?.href ?? '',
           element_section: payload.el?.section ?? '',
-          props: payload.p ?? {},
+          // A property that looks like an email, a phone or a card number is never stored.
+          props: withoutPersonal(payload.p ?? {}),
         },
       ],
     })

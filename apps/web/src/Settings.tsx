@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, KeyRound, UserPlus } from 'lucide-react'
 import { useState } from 'react'
-import { type ApiKey, api, type Me, type Org, type Role, type SiteUsage, type User } from './api'
+import {
+  type ApiKey,
+  api,
+  type KeyScope,
+  type Me,
+  type Org,
+  type Role,
+  type SiteUsage,
+  type User,
+} from './api'
 import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
 import { Panel } from './ui/Panel'
 
@@ -16,6 +25,21 @@ const ROLES: Array<{ value: Role; label: string; hint: string }> = [
   { value: 'admin', label: 'Admin', hint: 'Also manages sites, people and API keys' },
   { value: 'owner', label: 'Owner', hint: 'Also gives and takes away ownership' },
 ]
+
+const SCOPES: Array<{ value: KeyScope; label: string; hint: string }> = [
+  {
+    value: 'agent',
+    label: 'Coding agent',
+    hint: "Reads the team's data and defines events, through the MCP server. Nothing else",
+  },
+  {
+    value: 'ingest',
+    label: 'Server events',
+    hint: 'Only sends events from a server. Safe to keep in production; it reads nothing',
+  },
+  { value: 'admin', label: 'Admin', hint: 'Can do what an admin of the team can, for scripts' },
+]
+const scopeLabel = (scope: KeyScope) => SCOPES.find((s) => s.value === scope)?.label ?? scope
 
 const date = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
@@ -335,8 +359,9 @@ function Keys({ org }: { org: Org }) {
   const keys = useQuery({ queryKey: ['keys', org.id], queryFn: () => api.keys(org.id) })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['keys', org.id] })
   const [name, setName] = useState('')
+  const [scope, setScope] = useState<KeyScope>('agent')
   const create = useMutation({
-    mutationFn: () => api.createKey(org.id, name),
+    mutationFn: () => api.createKey(org.id, name, scope),
     onSuccess: () => {
       setName('')
       refresh()
@@ -349,9 +374,9 @@ function Keys({ org }: { org: Org }) {
   return (
     <Panel title="API keys">
       <p className="m-0 text-body text-muted">
-        For scripts: send{' '}
-        <code className="font-mono text-path">Authorization: Bearer &lt;key&gt;</code>. A key can do
-        what an admin of {org.name} can.
+        For coding agents, servers and scripts: send{' '}
+        <code className="font-mono text-path">Authorization: Bearer &lt;key&gt;</code>. Each key can
+        do only what its scope allows, for {org.name}.
       </p>
       {keys.isError && <ErrorText>{errorOf(keys.error)}</ErrorText>}
       {keys.data && keys.data.length > 0 && (
@@ -371,12 +396,26 @@ function Keys({ org }: { org: Org }) {
         <div className="min-w-56 flex-1">
           <Field
             label="New key"
-            placeholder="What it is for, like deploy script"
+            placeholder="What it is for, like Claude Code"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
+        <label className="grid gap-1.5 text-label font-medium text-muted">
+          Scope
+          <select
+            className={inputClass}
+            value={scope}
+            onChange={(e) => setScope(e.target.value as KeyScope)}
+          >
+            {SCOPES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Button
           type="submit"
           disabled={create.isPending}
@@ -386,6 +425,7 @@ function Keys({ org }: { org: Org }) {
           Create key
         </Button>
       </form>
+      <p className="m-0 text-label text-muted">{SCOPES.find((s) => s.value === scope)?.hint}.</p>
       {create.isError && <ErrorText>{errorOf(create.error)}</ErrorText>}
       {create.data && (
         <CopyBox label="Copy the key now. It is not shown again." value={create.data.key} />
@@ -400,7 +440,8 @@ function KeyRow({ apiKey, onDelete }: { apiKey: ApiKey; onDelete: () => void }) 
       <span className="min-w-0">
         <span className="block text-body font-medium">{apiKey.name}</span>
         <span className="block text-label text-muted">
-          <code className="font-mono">{apiKey.prefix}…</code> · created {date(apiKey.createdAt)} ·{' '}
+          {scopeLabel(apiKey.scope)} · <code className="font-mono">{apiKey.prefix}…</code> · created{' '}
+          {date(apiKey.createdAt)} ·{' '}
           {apiKey.lastUsedAt ? `last used ${date(apiKey.lastUsedAt)}` : 'never used'}
         </span>
       </span>

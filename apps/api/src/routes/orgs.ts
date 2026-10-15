@@ -206,6 +206,7 @@ orgRoutes.get('/api/orgs/:org/keys', async (c) => {
       id: apiKeys.id,
       name: apiKeys.name,
       prefix: apiKeys.prefix,
+      scope: apiKeys.scope,
       lastUsedAt: apiKeys.lastUsedAt,
       createdAt: apiKeys.createdAt,
     })
@@ -215,10 +216,20 @@ orgRoutes.get('/api/orgs/:org/keys', async (c) => {
   return c.json(keys)
 })
 
-/** Creates a key for scripts. The key itself is in this response only; just its hash is kept. */
+/**
+ * Creates a key: for scripts acting as an admin, for a coding agent (reads data and defines
+ * events), or for a server sending events. The key itself is in this response only; just its
+ * hash is kept.
+ */
 orgRoutes.post('/api/orgs/:org/keys', async (c) => {
   if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
-  const input = await body(c, z.object({ name: z.string().trim().min(1).max(100) }))
+  const input = await body(
+    c,
+    z.object({
+      name: z.string().trim().min(1).max(100),
+      scope: z.enum(['admin', 'agent', 'ingest']).default('admin'),
+    }),
+  )
   if (!input.ok) return input.error
   const { key, hash, prefix } = newApiKey()
   const principal = c.get('principal')
@@ -227,6 +238,7 @@ orgRoutes.post('/api/orgs/:org/keys', async (c) => {
     .values({
       orgId: c.get('orgId'),
       name: input.data.name,
+      scope: input.data.scope,
       keyHash: hash,
       prefix,
       createdBy: principal.kind === 'user' ? principal.user.id : null,
@@ -235,6 +247,7 @@ orgRoutes.post('/api/orgs/:org/keys', async (c) => {
       id: apiKeys.id,
       name: apiKeys.name,
       prefix: apiKeys.prefix,
+      scope: apiKeys.scope,
       lastUsedAt: apiKeys.lastUsedAt,
       createdAt: apiKeys.createdAt,
     })

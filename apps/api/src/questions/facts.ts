@@ -203,7 +203,7 @@ function conversionsOf(definition: ConversionDefinition, all: Both) {
   if (names.length) {
     const from =
       definition.source === 'catalog'
-        ? "key events in the site's catalog"
+        ? 'events marked key for the site'
         : `marked primary in the AI draft of ${shortDay((definition.draftedAt ?? '').slice(0, 10))}`
     return {
       names,

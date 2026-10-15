@@ -2,6 +2,11 @@ import { z } from 'zod'
 
 const Env = z.object({
   PORT: z.coerce.number().int().default(8787),
+  /**
+   * The address people and agents reach this instance at, such as https://recount.example.com,
+   * used in the instructions it hands out. Unset, the address each request came in on is used.
+   */
+  PUBLIC_URL: z.url().optional(),
   DATABASE_URL: z.string(),
   CLICKHOUSE_URL: z.url(),
   CLICKHOUSE_USER: z.string().default('default'),
