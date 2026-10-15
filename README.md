@@ -23,6 +23,9 @@ Status: in daily development, replacing a Plausible CE fork. See
 - **Tracking.** A 2 KB (gzip) script with cookie or cookieless identity, custom events, outbound
   and element clicks with their text and page section, and SPA navigation. A site moving off
   Plausible keeps its existing `plausible(...)` calls.
+- **Sites.** Every site on one page with its last 24 hours: visitors, the change from the day
+  before and an hourly trend. Site and referrer icons are fetched once by the server, from the
+  site itself (or DuckDuckGo's icon service when the site turns servers away), and stored.
 - **Dashboard.** Visitors on the site right now (the last 5 minutes), visitors and pageviews over time, sources and channels (AI assistants included),
   pages, locations, devices, goals, and filters that apply to every panel.
 - **Revenue.** Paddle transactions are synced and attributed to the visitor who paid, through

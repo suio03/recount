@@ -204,3 +204,11 @@ export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect
 export type Goal = typeof goals.$inferSelect
 export type Funnel = typeof funnels.$inferSelect
+
+/** A host's icon as fetched from it; no body means it had none. */
+export const icons = pgTable('icons', {
+  host: text('host').primaryKey(),
+  contentType: text('content_type'),
+  body: bytea('body'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+})

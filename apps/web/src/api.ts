@@ -65,6 +65,25 @@ export interface Site {
   shareToken: string | null
 }
 
+/** A site's last 24 hours, for the sites list. */
+export interface SiteActivity {
+  siteId: string
+  visitors: number
+  /** Visitors in the 24 hours before. */
+  previous: number
+  /** Visitors per hour, oldest first. */
+  series: number[]
+}
+
+/**
+ * Where a host's icon is served, fetched once by the server and stored there. A public link asks
+ * through its token, since its viewers are not signed in.
+ */
+export const iconUrl = (host: string, share?: string) =>
+  share
+    ? `/api/share/${encodeURIComponent(share)}/icons/${encodeURIComponent(host)}`
+    : `/api/icons/${encodeURIComponent(host)}`
+
 /** What one site used in a month. Model calls of a deleted site have no site. */
 export interface SiteUsage {
   siteId: string | null
@@ -397,6 +416,7 @@ const stats = (scope: Scope, kind: string, extra: Record<string, string> = {}) =
 
 export const api = {
   sites: () => get<Site[]>('/api/sites'),
+  activity: () => get<SiteActivity[]>('/api/activity'),
   setAi: (siteId: string, ai: boolean) => send<Site>('PATCH', `/api/sites/${siteId}`, { ai }),
   createSite: (input: { domain: string; timezone: string; currency: string; org?: string }) =>
     send<Site>('POST', '/api/sites', input),

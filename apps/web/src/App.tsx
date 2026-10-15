@@ -25,6 +25,8 @@ import { SessionsPanel } from './dashboard/SessionsPanel'
 import { Settings } from './Settings'
 import { AcceptInvite, SignIn } from './SignIn'
 import { NewSite, SiteSettings } from './SiteSettings'
+import { SitesList } from './SitesList'
+import { HostIcon } from './ui/HostIcon'
 import { Switch } from './ui/Switch'
 
 /** The realtime view refetches this often. */
@@ -32,22 +34,24 @@ const REALTIME_REFRESH_MS = 30_000
 /** The live count beside the site's name refetches this often. */
 const CURRENT_REFRESH_MS = 30_000
 
-type View = 'dashboard' | 'settings' | 'site' | 'new-site'
-const VIEWS: View[] = ['dashboard', 'settings', 'site', 'new-site']
+type View = 'sites' | 'dashboard' | 'settings' | 'site' | 'new-site'
+const VIEWS: View[] = ['sites', 'dashboard', 'settings', 'site', 'new-site']
 
 /** Site, period and filters live in the query string so a view can be reloaded and shared. */
 function useUrlState() {
   const params = new URLSearchParams(window.location.search)
+  // Without a site in the address, the list of sites opens first.
   const [view, setView] = useState<View>(
-    () => VIEWS.find((v) => v === params.get('view')) ?? 'dashboard',
+    () =>
+      VIEWS.find((v) => v === params.get('view')) ?? (params.get('site') ? 'dashboard' : 'sites'),
   )
   const [domain, setDomain] = useState(params.get('site') ?? undefined)
   const [period, setPeriod] = useState<Period>(() => readPeriod(params))
   const [filters, setFilters] = useState<Filters>(() => readFilters(params))
   useEffect(() => {
     const next = new URLSearchParams()
-    if (view !== 'dashboard') next.set('view', view)
-    if (domain) next.set('site', domain)
+    if (view !== 'dashboard' && view !== 'sites') next.set('view', view)
+    if (domain && view !== 'sites') next.set('site', domain)
     writePeriod(period, next)
     for (const [key, value] of Object.entries(filters)) if (value) next.set(key, value)
     window.history.replaceState(null, '', `?${next}${window.location.hash}`)
@@ -121,6 +125,7 @@ function SignedIn({ me }: { me: Me }) {
       : state.view
   const settings = view === 'settings'
   const dashboard = view === 'dashboard'
+  const list = view === 'sites'
   // A new site opens on its install snippet.
   const openCreated = (created: Site) => state.setDomain(created.domain, 'site')
   return (
@@ -129,12 +134,13 @@ function SignedIn({ me }: { me: Me }) {
         <div className="flex flex-wrap items-center gap-4">
           <button
             type="button"
-            onClick={() => state.setView('dashboard')}
+            onClick={() => state.setView('sites')}
+            title="All sites"
             className="cursor-pointer text-base font-semibold tracking-[-0.01em]"
           >
             Recount
           </button>
-          {!settings && view !== 'new-site' && (
+          {!settings && view !== 'new-site' && view !== 'sites' && (
             <>
               <span className="h-5 w-px bg-line" aria-hidden="true" />
               {sites.data && sites.data.length > 0 && site && (
@@ -196,7 +202,27 @@ function SignedIn({ me }: { me: Me }) {
         </div>
       </AppHeader>
 
-      {!dashboard && (
+      {list && (
+        <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-6 pb-12 sm:px-6">
+          {sites.data && sites.data.length > 0 ? (
+            <>
+              <PageTitle
+                title="Sites"
+                detail="Visitors in the last 24 hours, against the 24 before"
+              />
+              <SitesList
+                sites={sites.data}
+                onOpen={(domain) => state.setDomain(domain, 'dashboard')}
+                onSettings={(domain) => state.setDomain(domain, 'site')}
+                onAdd={canAdd ? () => state.setView('new-site') : undefined}
+              />
+            </>
+          ) : (
+            <SitesView sites={sites} me={me} canAdd={canAdd} onCreated={openCreated} />
+          )}
+        </main>
+      )}
+      {!dashboard && !list && (
         <main className="mx-auto flex max-w-3xl flex-col gap-3 px-4 pt-6 pb-12 sm:box-content sm:px-6">
           {settings && (
             <>
@@ -208,7 +234,7 @@ function SignedIn({ me }: { me: Me }) {
           {view === 'site' && site && (
             <>
               <PageTitle title="Site settings" detail={site.domain} />
-              <SiteSettings site={site} onDeleted={() => state.setDomain(undefined, 'dashboard')} />
+              <SiteSettings site={site} onDeleted={() => state.setDomain(undefined, 'sites')} />
             </>
           )}
         </main>
@@ -283,7 +309,10 @@ function Shared({ token }: { token: string }) {
     <>
       <AppHeader>
         <div className="flex flex-wrap items-center gap-4">
-          <span className="text-title font-semibold tracking-[-0.01em]">{domain}</span>
+          <span className="inline-flex items-center gap-2 text-title font-semibold tracking-[-0.01em]">
+            <HostIcon host={domain} share={token} className="size-5" />
+            {domain}
+          </span>
           <CurrentVisitors
             site={{ share: token }}
             onOpen={() => state.setPeriod({ preset: 'realtime' })}
@@ -407,8 +436,9 @@ function SitePicker({
   onAdd?: () => void
 }) {
   return (
-    <label className="relative inline-flex items-center gap-1.5 text-title font-semibold tracking-[-0.01em]">
+    <label className="relative inline-flex items-center gap-2 text-title font-semibold tracking-[-0.01em]">
       <span className="sr-only">Site</span>
+      <HostIcon host={current.domain} className="size-5" />
       <select
         className="cursor-pointer appearance-none rounded-sm bg-transparent pr-6 outline-none"
         value={current.domain}
@@ -526,6 +556,7 @@ function Dashboard({
             { value: 'referrer', label: 'Referrer', column: 'Referrer' },
             { value: 'campaign', label: 'Campaign', column: 'Campaign' },
           ]}
+          initial="referrer"
           {...props}
         />
         <BreakdownPanel

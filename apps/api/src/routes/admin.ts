@@ -15,6 +15,7 @@ import { clickhouse } from '../db/clickhouse'
 import { db } from '../db/postgres'
 import { type Role, type Site, sites } from '../db/schema'
 import { normalizeDomain, validTimezone } from '../domain'
+import { iconResponse } from '../icons/store'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
 import { currentVisitors, rows } from '../stats/queries'
@@ -27,6 +28,8 @@ export type SiteEnv = AuthEnv & { Variables: { site: Site; role: Role } }
 export const adminRoutes = new Hono<SiteEnv>()
 
 adminRoutes.use('/api/sites', requireAuth)
+adminRoutes.use('/api/icons/*', requireAuth)
+adminRoutes.use('/api/activity', requireAuth)
 adminRoutes.use('/api/sites/*', requireAuth)
 adminRoutes.use(
   '/api/sites',
@@ -187,6 +190,69 @@ adminRoutes.delete('/api/sites/:id', async (c) => {
     })
   return c.json({ ok: true })
 })
+
+/** Hours in the sites list's trend. */
+const ACTIVITY_HOURS = 24
+
+/**
+ * The last 24 hours of every site the caller can see, for the sites list: visitors, visitors in
+ * the 24 hours before, and visitors per hour, oldest first.
+ */
+adminRoutes.get('/api/activity', async (c) => {
+  const orgs = await orgsOf(c.get('principal'))
+  const visible = orgs.length
+    ? await db
+        .select({ id: sites.id })
+        .from(sites)
+        .where(
+          inArray(
+            sites.orgId,
+            orgs.map((o) => o.id),
+          ),
+        )
+    : []
+  if (!visible.length) return c.json([])
+  const params = { ids: visible.map((s) => s.id), hours: ACTIVITY_HOURS }
+  const window = `site_id IN {ids:Array(UUID)} AND timestamp <= now()`
+  const [totals, hourly] = await Promise.all([
+    rows<{ site: string; visitors: number; previous: number }>(
+      `SELECT toString(site_id) AS site,
+              uniqExactIf(visitor_id, timestamp > now() - INTERVAL {hours:UInt16} HOUR) AS visitors,
+              uniqExactIf(visitor_id, timestamp <= now() - INTERVAL {hours:UInt16} HOUR) AS previous
+       FROM events WHERE ${window} AND timestamp > now() - INTERVAL {hours:UInt16} * 2 HOUR
+       GROUP BY site_id`,
+      params,
+    ),
+    rows<{ site: string; ago: number; visitors: number }>(
+      `SELECT toString(site_id) AS site,
+              dateDiff('hour', toStartOfHour(timestamp), toStartOfHour(now())) AS ago,
+              uniqExact(visitor_id) AS visitors
+       FROM events
+       WHERE ${window} AND timestamp >= toStartOfHour(now()) - INTERVAL {hours:UInt16} - 1 HOUR
+       GROUP BY site_id, ago`,
+      params,
+    ),
+  ])
+  const bySite = new Map(totals.map((t) => [t.site, t]))
+  return c.json(
+    visible.map(({ id }) => {
+      const series = Array.from({ length: ACTIVITY_HOURS }, () => 0)
+      for (const h of hourly)
+        if (h.site === id && h.ago < ACTIVITY_HOURS)
+          series[ACTIVITY_HOURS - 1 - Number(h.ago)] = Number(h.visitors)
+      const total = bySite.get(id)
+      return {
+        siteId: id,
+        visitors: Number(total?.visitors ?? 0),
+        previous: Number(total?.previous ?? 0),
+        series,
+      }
+    }),
+  )
+})
+
+/** A site's or referrer's icon, fetched from the host once and stored. */
+adminRoutes.get('/api/icons/:host', (c) => iconResponse(c.req.param('host')))
 
 /** Visitors on the site in the last few minutes, for the live count beside its name. */
 adminRoutes.get('/api/sites/:id/current', async (c) =>

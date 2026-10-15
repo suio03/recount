@@ -5,7 +5,7 @@ import { BreakdownList, type BreakdownRow } from '../ui/BreakdownList'
 import { Panel } from '../ui/Panel'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { MONO_FILTERS } from './filters'
-import { countryName, money } from './format'
+import { countryFlag, countryName, money } from './format'
 
 export interface DimensionOption {
   value: Dimension
@@ -18,9 +18,19 @@ export interface DimensionOption {
 function toRow(
   dimension: Dimension,
   { value, visitors, revenue }: Breakdown['rows'][number],
+  share?: string,
 ): BreakdownRow {
   if (dimension === 'country')
-    return { key: value, label: countryName(value), hint: value, visitors, revenue }
+    return {
+      key: value,
+      label: countryName(value),
+      hint: value,
+      flag: countryFlag(value),
+      visitors,
+      revenue,
+    }
+  if (dimension === 'referrer')
+    return { key: value, label: value, icon: { host: value, share }, visitors, revenue }
   return { key: value, label: value, mono: MONO_FILTERS.has(dimension), visitors, revenue }
 }
 
@@ -34,15 +44,18 @@ function revenueFormat({ rows, currency }: Breakdown) {
 export function BreakdownPanel({
   title,
   options,
+  initial = options[0].value,
   scope,
   onFilter,
 }: {
   title: string
   options: readonly [DimensionOption, ...DimensionOption[]]
+  /** The tab shown first, when not the first one. */
+  initial?: Dimension
   scope: Scope
   onFilter: (dimension: Dimension, value: string) => void
 }) {
-  const [dimension, setDimension] = useState<Dimension>(options[0].value)
+  const [dimension, setDimension] = useState<Dimension>(initial)
   const current = options.find((o) => o.value === dimension) ?? options[0]
   const data = useQuery({
     queryKey: ['breakdown', scope, dimension],
@@ -75,7 +88,7 @@ export function BreakdownPanel({
       ) : (
         <BreakdownList
           dimension={current.column}
-          rows={data.data.rows.map((r) => toRow(dimension, r))}
+          rows={data.data.rows.map((r) => toRow(dimension, r, scope.share))}
           formatRevenue={revenueFormat(data.data)}
           onSelect={(row) => onFilter(dimension, row.key)}
         />

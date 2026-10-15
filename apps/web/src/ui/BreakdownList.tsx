@@ -1,4 +1,5 @@
 import { cx } from './cx'
+import { HostIcon } from './HostIcon'
 
 export interface BreakdownRow {
   key: string
@@ -6,6 +7,10 @@ export interface BreakdownRow {
   /** Set for paths, hosts and event names, which are shown exactly as recorded. */
   mono?: boolean
   hint?: string
+  /** A host whose icon leads the label, and the public link's token to ask for it with. */
+  icon?: { host: string; share?: string }
+  /** A flag emoji leading the label, for countries. */
+  flag?: string
   visitors: number
   revenue?: number
 }
@@ -83,6 +88,21 @@ export function BreakdownList({ dimension, rows, formatRevenue, onSelect }: Brea
 function Label({ row }: { row: BreakdownRow }) {
   return (
     <>
+      {row.icon && (
+        <HostIcon
+          host={row.icon.host}
+          share={row.icon.share}
+          className="mr-2 inline-block size-4 align-[-3px]"
+        />
+      )}
+      {row.flag && (
+        <span
+          aria-hidden="true"
+          className="mr-2 inline-block w-4 text-center font-[Twemoji_Country_Flags,var(--font-sans)]"
+        >
+          {row.flag}
+        </span>
+      )}
       <span className={cx(row.mono && 'font-mono text-path')}>{row.label}</span>
       {row.hint && <span className="ml-2 text-label text-muted">{row.hint}</span>}
     </>

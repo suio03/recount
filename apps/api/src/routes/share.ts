@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '../db/postgres'
 import { type Site, sites } from '../db/schema'
+import { iconResponse } from '../icons/store'
 import { currentVisitors, rows } from '../stats/queries'
 import { statsRoutes } from './stats'
 
@@ -32,6 +33,8 @@ shareRoutes.get('/api/share/:token/site', async (c) => {
   )
   return c.json({ domain, name, timezone, currency, firstEvent: first?.first ?? null })
 })
+
+shareRoutes.get('/api/share/:token/icons/:host', (c) => iconResponse(c.req.param('host')))
 
 shareRoutes.get('/api/share/:token/current', async (c) =>
   c.json({ visitors: await currentVisitors(c.get('site')) }),

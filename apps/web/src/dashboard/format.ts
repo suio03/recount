@@ -33,6 +33,15 @@ export const countryName = (code: string) => {
   }
 }
 
+/**
+ * A country's flag as the emoji made of its two regional-indicator letters, or undefined for
+ * codes that are not two letters. Systems without flag emoji show the letters instead.
+ */
+export const countryFlag = (code: string) =>
+  /^[A-Za-z]{2}$/.test(code)
+    ? String.fromCodePoint(...[...code.toUpperCase()].map((c) => 0x1f1a5 + c.charCodeAt(0)))
+    : undefined
+
 /** Today as YYYY-MM-DD in the given IANA timezone. */
 export function todayIn(timezone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date())
