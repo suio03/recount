@@ -148,7 +148,14 @@ Next:
    "Conversion", "Best channel"), each from fixed queries with the definition code wrote,
    asked only when picked and cached like readings. Conversion is the catalog's key events, else
    what the draft marks primary, else the goals with the most visitors, and the definition says
-   which. Next: gaps from blind-spot signals.
+   which. Gaps start from the signals code finds in the last 30 days: a page whose median view
+   lasts at least a minute and three times the site's before the visit's next event, clicks on
+   elements with no text or label, checkout pages, buttons or payment hosts with no payments
+   or purchase events recorded, and a form button (Submit, Subscribe, Sign up…) followed by a
+   page or custom event within 2 minutes in at most a fifth of sessions. Each needs 10 visitors
+   or sessions. The draft gives one gap per signal and at most 2 guesses, shown with the signal
+   behind each or marked "Guess"; signals no gap answers are listed too. The seed has one of
+   each kind except checkout, since both demos record payments.
 2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
    AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
    through the id passed from the browser, as with `recount.ids()`; an MCP server with

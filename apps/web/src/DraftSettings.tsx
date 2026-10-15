@@ -13,6 +13,11 @@ const when = (iso: string) =>
 const day = (d: string) =>
   new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 const count = (n: number) => n.toLocaleString('en')
+/** A signal's line without the id the model cites it by, as a sentence. */
+const signalText = (text: string) => {
+  const rest = text.replace(/^S\d+ /, '')
+  return rest.charAt(0).toUpperCase() + rest.slice(1)
+}
 const next = (iso: string, schedule: 'daily' | 'weekly') =>
   new Date(Date.parse(iso) + (schedule === 'daily' ? 1 : 7) * 86_400_000).toISOString()
 
@@ -165,6 +170,9 @@ function DraftBody({
   busy: boolean
   onDecide: (kind: 'goal' | 'funnel', name: string, add: boolean) => void
 }) {
+  const signals = new Map(draft.signals?.map((s) => [s.id, signalText(s.text)]))
+  const covered = new Set(draft.gaps.map((g) => g.signal))
+  const unanswered = draft.signals?.filter((s) => !covered.has(s.id)) ?? []
   return (
     <>
       {draft.about && <p className="m-0 text-body">{draft.about}</p>}
@@ -208,15 +216,43 @@ function DraftBody({
           />
         ))}
       </Section>
-      {draft.gaps.length > 0 && (
+      {(draft.gaps.length > 0 || unanswered.length > 0) && (
         <Section title="What the data cannot show" empty="">
-          {draft.gaps.map((g) => (
-            <li key={g.title} className="grid gap-1.5 border-line border-t py-2 first:border-t-0">
-              <span className="text-body font-medium">{g.title}</span>
-              <span className="text-label text-muted">{g.why}</span>
-              <CopyBox label="Add to the site" value={g.code} />
-            </li>
-          ))}
+          {[
+            ...draft.gaps.map((g) => {
+              const signal = g.signal && signals.get(g.signal)
+              return (
+                <li
+                  key={g.title}
+                  className="grid gap-1.5 border-line border-t py-2 first:border-t-0"
+                >
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-body font-medium">
+                    {g.title}
+                    {g.signal === null && (
+                      <span
+                        className="rounded-xs bg-sunken px-1.5 text-label font-normal text-muted"
+                        title="No signal in the data points at this; it is what a site of this kind usually tracks"
+                      >
+                        Guess
+                      </span>
+                    )}
+                  </span>
+                  {signal && (
+                    <span className="text-label text-muted">Seen in the data: {signal}</span>
+                  )}
+                  <span className="text-label">{g.why}</span>
+                  <CopyBox label="Add to the site" value={g.code} />
+                </li>
+              )
+            }),
+            ...unanswered.map((s) => (
+              <li key={s.id} className="grid gap-1 border-line border-t py-2 first:border-t-0">
+                <span className="text-label text-muted">
+                  Seen in the data, no gap drafted: {signalText(s.text)}
+                </span>
+              </li>
+            )),
+          ]}
         </Section>
       )}
       {draft.dropped.length > 0 && (

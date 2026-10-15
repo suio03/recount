@@ -3,6 +3,7 @@ import { clickhouse } from '../db/clickhouse'
 import { db, sql } from '../db/postgres'
 import { sites } from '../db/schema'
 import { describeItem, inventoryOf } from './inventory'
+import { describeSignal } from './signals'
 import { last30Days, runDraft } from './store'
 
 /**
@@ -22,6 +23,7 @@ async function main() {
     const inventory = await inventoryOf(site, last30Days(site.timezone))
     console.log(`${inventory.visitors} visitors, ${inventory.sessions} sessions`)
     for (const item of inventory.items) console.log(describeItem(item))
+    for (const signal of inventory.signals) console.log(describeSignal(signal))
     return
   }
   const { body: draft, error } = await runDraft(site)
@@ -39,7 +41,8 @@ async function main() {
       console.log(`      ${String(s.visitors).padStart(6)}  ${s.name}  ${JSON.stringify(s.match)}`)
   }
   console.log('\nTracking gaps:')
-  for (const g of draft.gaps) console.log(`  - ${g.title}: ${g.why}\n      ${g.code}`)
+  for (const g of draft.gaps)
+    console.log(`  - ${g.title} [${g.signal ?? 'guess'}]: ${g.why}\n      ${g.code}`)
   if (draft.dropped.length) console.log(`\nDropped:\n  ${draft.dropped.join('\n  ')}`)
 }
 

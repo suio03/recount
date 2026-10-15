@@ -61,6 +61,7 @@ const PAGES: Array<[string, number]> = [
   ['/category/writing', 4],
   ['/submit', 2],
   ['/pricing', 2],
+  ['/playground', 3],
 ]
 
 const TOOLS: Record<string, string> = {
@@ -111,6 +112,7 @@ function linkTo(from: string, to: string, origin: string): Click {
   if (to === '/category/writing') return link('Writing', 'nav', href)
   if (to === '/submit') return link('Submit a tool', 'header', href)
   if (to === '/pricing') return link('Pricing', 'header', href)
+  if (to === '/playground') return link('Playground', 'nav', href)
   return link('AI Tools Directory', 'header', href)
 }
 const COUNTRIES: Array<[string, number]> = [
@@ -203,6 +205,10 @@ async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
         if (v > 0) click(pathname, linkTo(pathname, next, origin))
         pathname = next
         rows.push({ ...session, timestamp: at(), name: 'pageview', pathname })
+        // Blind spots for tracking gaps: the playground is used for minutes with nothing tracked,
+        // and a tool's bookmark button is an icon with no text or label.
+        if (pathname === '/playground') t += 120_000 + random() * 480_000
+        if (toolOf(pathname) && random() < 0.15) click(pathname, button('', 'Tool profile'))
         if (views > 1 && random() < 0.35) {
           // Where the opened tool sat in the list, top slots far more often.
           const position = String(1 + Math.floor(random() ** 2 * 12))
@@ -230,6 +236,8 @@ async function seedSite(orgId: string, demo: (typeof DEMOS)[number]) {
         event('Outbound Click', pathname, { tool })
       } else if (random() < 0.02)
         click(pathname, link('Follow us', 'footer', 'https://x.com/ordalin'))
+      // The newsletter form shows its thanks in place, so nothing follows its button.
+      else if (random() < 0.03) click(pathname, button('Subscribe', 'footer'))
       const ids = { visitorId: BigInt(session.visitor_id), sessionId: BigInt(session.session_id) }
       if (random() < 0.01) {
         if (pathname !== '/submit') {

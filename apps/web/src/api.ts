@@ -247,7 +247,10 @@ export interface SemanticDraft {
     status: DraftItemStatus
     as?: string
   }>
-  gaps: Array<{ title: string; why: string; code: string }>
+  /** `signal` is the id of the blind spot a gap starts from, null for a guess; older drafts have neither. */
+  gaps: Array<{ title: string; why: string; code: string; signal?: string | null }>
+  /** Blind spots found in the data: something visitors do that the events do not show. */
+  signals?: Array<{ id: string; kind: string; text: string }>
   dropped: string[]
   model: string
   generatedAt: string

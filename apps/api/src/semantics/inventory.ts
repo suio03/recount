@@ -1,11 +1,13 @@
 import type { Site } from '../db/schema'
 import { inRange, rows } from '../stats/queries'
 import { type DateRange, rangeParams } from '../stats/range'
+import { type Signal, signalsOf } from './signals'
 
 /**
  * What a site's data holds, listed by code for the model that drafts the site's semantics:
- * pages, page types, clicked elements, custom events, and what paying visits did. Each item
- * has an id the draft cites as evidence. Counts are unique visitors in the range.
+ * pages, page types, clicked elements, custom events, and what paying visits did, with the blind
+ * spots code found in them. Each item and signal has an id the draft cites as evidence. Counts
+ * are unique visitors in the range.
  */
 export interface Inventory {
   domain: string
@@ -13,6 +15,7 @@ export interface Inventory {
   visitors: number
   sessions: number
   items: Item[]
+  signals: Signal[]
 }
 
 export type Item =
@@ -48,7 +51,7 @@ const PAID = 15
 
 export async function inventoryOf(site: Site, range: DateRange): Promise<Inventory> {
   const params = { site: site.id, tz: site.timezone, ...rangeParams(range) }
-  const [totals, pages, patterns, pageTypes, clicks, events, paid] = await Promise.all([
+  const [totals, pages, patterns, pageTypes, clicks, events, paid, signals] = await Promise.all([
     rows<{ visitors: number; sessions: number }>(
       `SELECT uniqExact(visitor_id) AS visitors, uniqExact(session_id) AS sessions
        FROM events WHERE ${inRange}`,
@@ -103,6 +106,7 @@ export async function inventoryOf(site: Site, range: DateRange): Promise<Invento
       params,
     ),
     paidOf(params),
+    signalsOf(params),
   ])
   const total = totals[0] ?? { visitors: 0, sessions: 0 }
   const items: Item[] = []
@@ -122,6 +126,7 @@ export async function inventoryOf(site: Site, range: DateRange): Promise<Invento
     visitors: Number(total.visitors),
     sessions: Number(total.sessions),
     items: items.map((item) => normalize(item)),
+    signals,
   }
 }
 

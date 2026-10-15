@@ -8,18 +8,21 @@ import { BUILT_IN_EVENTS, Match, matchSql } from '../stats/goals'
 import { funnelOf, inRange, rows, type Scope } from '../stats/queries'
 import { rangeParams } from '../stats/range'
 import { describeItem, type Inventory } from './inventory'
+import { describeSignal, type Signal } from './signals'
 
 /**
  * A site's semantics as the model drafts them from its inventory, after code has checked every
  * part against the data: what conversion is (goals), the paths to it (funnels), and what the
- * browser cannot see (tracking gaps). The model writes definitions only; every count here comes
- * from a query.
+ * browser cannot see (tracking gaps), which start from the blind spots code found in the data.
+ * The model writes definitions only; every count here comes from a query.
  */
 export interface Draft {
   about: string
   conversions: Conversion[]
   funnels: DraftFunnel[]
   gaps: Gap[]
+  /** The blind spots found in the data, whether or not a gap was drafted for each. */
+  signals: Signal[]
   /** Parts the checks dropped, and why. */
   dropped: string[]
   model: string
@@ -48,6 +51,8 @@ export interface Gap {
   why: string
   /** The line to add to the site. */
   code: string
+  /** The id of the signal it starts from; null when it rests on no signal and is a guess. */
+  signal: string | null
 }
 
 /** Structure only: structured outputs reject length and count limits, so those apply below. */
@@ -79,12 +84,21 @@ const Output = z.object({
       steps: z.array(z.object({ name: z.string(), match: MatchOutput })),
     }),
   ),
-  gaps: z.array(z.object({ title: z.string(), why: z.string(), code: z.string() })),
+  gaps: z.array(
+    z.object({
+      title: z.string(),
+      why: z.string(),
+      code: z.string(),
+      signal: z.string().nullable(),
+    }),
+  ),
 })
 
 const MAX_CONVERSIONS = 6
 const MAX_FUNNELS = 2
-const MAX_GAPS = 4
+const MAX_GAPS = 8
+/** Gaps no signal points at: the model's guesses of what a site of its kind should track. */
+const MAX_GUESSES = 2
 
 const SYSTEM = `You define what matters on a website for its analytics: what counts as a conversion, the paths visitors take to it, and what the data cannot show. You get an inventory of the site's data from the last 30 days. Each item has an id.
 
@@ -108,8 +122,13 @@ Funnels:
 - Steps of a funnel use the same definitions as the conversions where they are the same thing.
 
 Tracking gaps:
-- Up to 3 outcomes that matter to this business but that nothing in the inventory shows: a result only the server knows (signup confirmed, payment succeeded when no payments are listed), a value (plan, amount), or a result inside the page (a search that found nothing).
-- For each, the one line of code to add, using recount('Event name', { props: { ... } }) in the site's JavaScript, or the attribute data-rc-event="Event name" on an element. Use variables for values the page knows (plan, category), not made-up literals. No gap for something already in the inventory, or for an event the owner already describes: it is sent, just not seen in this range.
+- Start from the blind-spot signals: code found each in the data, and each is something visitors do that the events do not show. One gap per signal, with "signal" set to its id; "why" says what visitors are likely doing there that goes unrecorded. Skip a signal only when an inventory item already records what it points at.
+  - long stay: visitors spend minutes on the page with nothing tracked. Record the action inside it (a game started, a video played, a result exported).
+  - clicks on an element with no text or label: likely an icon. Name what it does with data-rc-event on the element.
+  - checkout with no payments recorded: the purchase completes where the browser cannot see it. Send an event when the order is confirmed, with its plan or amount.
+  - form sent with nothing after it: the result shows in place. Send an event when the form succeeds.
+- Then at most 2 outcomes that matter to this business that no signal points at and nothing in the inventory shows: a result only the server knows (signup confirmed), or a value (plan, amount). Set "signal" to null; these are shown as guesses.
+- For each gap, the one line of code to add, using recount('Event name', { props: { ... } }) in the site's JavaScript, or the attribute data-rc-event="Event name" on an element. Use variables for values the page knows (plan, category), not made-up literals. No gap for something already in the inventory, or for an event the owner already describes: it is sent, just not seen in this range.
 
 Each "why" is one sentence, in words a site owner understands, saying what in the data shows this; list the ids it rests on in "evidence", not in the sentence. Do not write numbers in "why" or "about". "about" says in one or two sentences what the site is and what it wants visitors to do, as far as the data shows.`
 
@@ -123,11 +142,14 @@ function prompt(inventory: Inventory, semantics: SiteSemantics | undefined) {
 Range: ${inventory.range.from} to ${inventory.range.to}; ${inventory.visitors} visitors in ${inventory.sessions} sessions.
 ${known}
 Inventory:
-${inventory.items.map(describeItem).join('\n')}`
+${inventory.items.map(describeItem).join('\n')}
+
+Blind-spot signals:
+${inventory.signals.length ? inventory.signals.map(describeSignal).join('\n') : 'None found.'}`
 }
 
-/** Inventory ids such as P10 or R2, which a sentence may cite despite being told not to. */
-const ID = /\s*\(?(?<!\w)[PGTCER]\d+(?:,\s*[PGTCER]\d+)*\)?(?!\w)/g
+/** Inventory and signal ids such as P10 or S2, which a sentence may cite despite being told not to. */
+const ID = /\s*\(?(?<!\w)[PGTCERS]\d+(?:,\s*[PGTCERS]\d+)*\)?(?!\w)/g
 export const withoutIds = (text: string) => text.replace(ID, '').trim()
 
 /** A model match with nulls dropped, if it is a valid rule. */
@@ -272,11 +294,31 @@ export async function checkDraft(
     })
   }
 
-  const gaps = output.gaps
-    .slice(0, MAX_GAPS)
-    .filter((g) => g.title.trim() && g.code.trim())
-    .filter((g) => numbersOk(`Gap "${g.title}"`, g.why, [...byId.keys()]))
-    .map((g) => ({ title: g.title.trim(), why: withoutIds(g.why), code: g.code.trim() }))
+  const signals = new Map(inventory.signals.map((s) => [s.id, describeSignal(s)]))
+  for (const [id, text] of signals) byId.set(id, text)
+  const gaps: Gap[] = []
+  const covered = new Set<string>()
+  for (const g of output.gaps.slice(0, MAX_GAPS)) {
+    const title = g.title.trim()
+    const label = `Gap "${title}"`
+    if (!title || !g.code.trim()) continue
+    const signal = g.signal && signals.has(g.signal) ? g.signal : null
+    if (g.signal && !signal) dropped.push(`${label}: no signal ${g.signal}, so it is a guess`)
+    if (signal && covered.has(signal)) {
+      dropped.push(`${label}: a second gap for ${signal}`)
+      continue
+    }
+    if (!signal && gaps.filter((x) => !x.signal).length >= MAX_GUESSES) {
+      dropped.push(`${label}: more than ${MAX_GUESSES} guesses`)
+      continue
+    }
+    if (!numbersOk(label, g.why, [...byId.keys()])) continue
+    if (signal) covered.add(signal)
+    gaps.push({ title, why: withoutIds(g.why), code: g.code.trim(), signal })
+  }
+  // Grounded gaps first, in the order their signals were found.
+  const order = (g: Gap) => (g.signal ? inventory.signals.findIndex((s) => s.id === g.signal) : 99)
+  gaps.sort((a, b) => order(a) - order(b))
 
   let about = withoutIds(output.about)
   if (unsupportedNumbers(about, [...byId.values()]).length) {
@@ -288,6 +330,7 @@ export async function checkDraft(
     conversions,
     funnels,
     gaps,
+    signals: inventory.signals,
     dropped,
     model: env.READING_MODEL,
     generatedAt: new Date().toISOString(),
