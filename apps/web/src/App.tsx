@@ -27,6 +27,7 @@ import { AcceptInvite, SignIn } from './SignIn'
 import { NewSite, SiteSettings } from './SiteSettings'
 import { SitesList } from './SitesList'
 import { HostIcon } from './ui/HostIcon'
+import { Logo } from './ui/Logo'
 import { Switch } from './ui/Switch'
 
 /** The realtime view refetches this often. */
@@ -136,9 +137,10 @@ function SignedIn({ me }: { me: Me }) {
             type="button"
             onClick={() => state.setView('sites')}
             title="All sites"
-            className="cursor-pointer text-base font-semibold tracking-[-0.01em]"
+            className="flex cursor-pointer items-center gap-2 text-base font-semibold tracking-[-0.01em]"
           >
-            Recount
+            <Logo />
+            recount
           </button>
           {!settings && view !== 'new-site' && view !== 'sites' && (
             <>
