@@ -118,7 +118,14 @@ Done:
 
 Next:
 
-1. **Semantics drafted by AI, answers to common questions**: on a schedule each site picks (daily
+1. **Breakdown by event properties** (planned 2026-10-15): the properties a custom event carries
+   (`stage`, `plan`, `minutes`) are stored but nothing reads them yet. Opening an event in Goals
+   lists its property names, then the values of one with visitors and events each; a property
+   whose values are all numbers shows its distribution (median, quartiles, a histogram) instead
+   of a list. Any value can be added as a filter, as other dimensions are. It comes first because
+   it makes the events sites already send useful without any definition, and the semantics draft
+   and the questions after it can cite property values.
+2. **Semantics drafted by AI, answers to common questions**: on a schedule each site picks (daily
    or weekly), code lists what the site's data holds (paths, page types, clicked elements by
    section, outbound domains, custom events) and the model drafts what conversion and the key
    paths are, as goals and funnels with the evidence behind each. Code drops drafts that match
@@ -127,20 +134,31 @@ Next:
    overrides. Built-in questions (how is traffic, how is conversion, which channel brings the
    best visitors) are fixed queries the model explains, stating the definition used. Data the
    browser cannot see becomes a tracking gap: what is missing, why, and the line of code to add.
+   Gaps start from blind-spot signals that code finds in the data, rather than from what the
+   model guesses a site of its kind should track: pages where visitors stay long but click
+   little (a canvas game, a video, an editor), clicks on elements with no text or label, a
+   checkout reached without payments recorded, a form submitted with no confirmation page after
+   it. The model explains each signal and drafts the event to add; a gap with no signal behind
+   it is marked as a guess.
    Started: the inventory, the draft and its checks, run from the `semantics` CLI. The seed's
    `autocapture` demo has the same traffic as `demo` without custom events, to show what a draft
    finds from pageviews and clicks alone. Next: storing drafts, the schedule, applying them, the
    dashboard view, then the questions.
-2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
+3. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
    AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
    through the id passed from the browser, as with `recount.ids()`; an MCP server with
    `get_install`, `get_tracking_rules`, `list_tracking_gaps`, `define_event`, `verify_event` and
    the question tools, so an agent implements a gap, checks the event arrives and registers its
    meaning. Its keys read data and write definitions only, and the server rejects properties
    that look like personal data.
-3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
+4. **Visitor journeys** (planned 2026-10-15): one visitor's visits in order, each as its pages,
+   clicks and custom events with their properties and times, opened from any breakdown row,
+   goal or funnel step to see the people behind a number. Works for every visitor, not only
+   recorded sessions, since it reads events; recordings, where they exist, link from the visit.
+   Needs cookie mode to join visits; in cookieless mode it shows one day.
+5. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-4. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
+6. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
    impressions, CTR and position for the queries and landing pages behind organic search, joined
    to Recount by landing page so a query's ranking sits next to what its visitors did afterwards.
    - Google: the Search Analytics API, read with the `webmasters.readonly` scope. Each day is
@@ -168,11 +186,11 @@ Next:
      connecting in the dashboard and the Search panel; then publishing the hosted OAuth app,
      which needs the privacy policy and home page from the hosted service; Bing last. It comes
      after the hosted service because Google keeps 16 months, so waiting loses no data.
-5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-6. **Attribution**: first touch next to last non-direct touch; Creem sync.
-7. **Digests**: periodic email digests.
-8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
-9. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
+7. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+8. **Attribution**: first touch next to last non-direct touch; Creem sync.
+9. **Digests**: periodic email digests.
+10. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+11. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
    conversion with confidence intervals, explained by the model.
 
 ## Known gaps in the skeleton
@@ -182,4 +200,3 @@ Next:
 - Cookieless sessions live in API process memory; a restart starts new sessions.
 - No email yet: invites are links to copy, and forgotten passwords are reset with the `user` CLI.
 - Sign-in rate limits live in process memory, which is enough for one instance.
-- SPA pageviews fire on `pushState` before the new page sets its title.
