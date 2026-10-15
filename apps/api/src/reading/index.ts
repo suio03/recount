@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto'
-import { semanticsFor } from '@recount/sites'
 import { and, eq, gt } from 'drizzle-orm'
 import { AiUnavailable } from '../ai/claude'
 import { withinBudget } from '../ai/usage'
 import { db } from '../db/postgres'
 import { readings } from '../db/schema'
 import { env } from '../env'
+import { semanticsOf } from '../semantics/store'
 import type { Scope } from '../stats/queries'
 import { isOpen } from '../stats/range'
 import type { Finding } from './changes'
@@ -61,7 +61,7 @@ function cacheKey(scope: Scope) {
  * with one, both are cached together so evidence ids keep pointing at the numbers the model saw.
  */
 export async function readingFor(scope: Scope, { refresh = false } = {}): Promise<ReadingResponse> {
-  const semantics = semanticsFor(scope.site.domain)
+  const semantics = await semanticsOf(scope.site)
   if (!scope.site.ai || !env.ANTHROPIC_API_KEY) {
     return {
       findings: await detectChanges(scope, semantics),

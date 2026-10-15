@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleCheck, CreditCard, Globe, Link2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api, type Me, type RevenueSource, type Site, type SiteChange } from './api'
+import { DraftSettings } from './DraftSettings'
 import { FunnelSettings, GoalSettings } from './GoalSettings'
 import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
 import { Panel } from './ui/Panel'
@@ -120,6 +121,7 @@ export function SiteSettings({ site, onDeleted }: { site: Site; onDeleted: () =>
     <div className="grid max-w-3xl gap-3">
       <Install site={site} />
       <General key={site.id} site={site} />
+      <DraftSettings key={`drafts-${site.id}`} site={site} />
       <GoalSettings key={`goals-${site.id}`} site={site} />
       <FunnelSettings key={`funnels-${site.id}`} site={site} />
       <Revenue key={`revenue-${site.id}`} site={site} />

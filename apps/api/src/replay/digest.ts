@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { semanticsFor } from '@recount/sites'
 import { and, eq, gt } from 'drizzle-orm'
 import { AiUnavailable, structured } from '../ai/claude'
 import { withinBudget } from '../ai/usage'
@@ -7,6 +6,7 @@ import { db } from '../db/postgres'
 import { readings } from '../db/schema'
 import { env } from '../env'
 import { shortDay } from '../reading/format'
+import { semanticsOf } from '../semantics/store'
 import type { Scope } from '../stats/queries'
 import { days } from '../stats/range'
 import { replaysFor } from './list'
@@ -95,7 +95,7 @@ export async function digestFor(scope: Scope, { refresh = false } = {}): Promise
         kind: 'digest',
         model: env.READING_MODEL,
         system: SYSTEM,
-        user: prompt(scope.site.domain, period, sessions, semanticsFor(scope.site.domain)),
+        user: prompt(scope.site.domain, period, sessions, await semanticsOf(scope.site)),
         schema: Output,
         maxTokens: 2500,
       })

@@ -12,6 +12,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core'
+import type { Draft } from '../semantics/draft'
 import type { GoalMatch, Match } from '../stats/goals'
 
 // Tables are created by SQL files in migrations/postgres; keep these definitions in sync.
@@ -97,6 +98,10 @@ export const sites = pgTable('sites', {
   ai: boolean('ai').notNull().default(false),
   /** Opens the public read-only dashboard at /share/<token>; null when there is none. */
   shareToken: text('share_token').unique(),
+  /** How often the model drafts the site's goals and funnels. */
+  draftSchedule: text('draft_schedule').$type<DraftSchedule>().notNull().default('off'),
+  /** Whether a draft's new goals and funnels are added on their own or wait for a person. */
+  draftApply: text('draft_apply').$type<DraftApply>().notNull().default('review'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -158,6 +163,8 @@ export const goals = pgTable(
       .references(() => sites.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     match: jsonb('match').$type<GoalMatch>().notNull(),
+    /** Added from a draft rather than by a person. */
+    drafted: boolean('drafted').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.siteId, t.name)],
@@ -177,6 +184,8 @@ export const funnels = pgTable(
       .references(() => sites.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     steps: jsonb('steps').$type<FunnelStep[]>().notNull(),
+    /** Added from a draft rather than by a person. */
+    drafted: boolean('drafted').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique().on(t.siteId, t.name)],
@@ -198,6 +207,35 @@ export const aiUsage = pgTable('ai_usage', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/** A site's semantics as last drafted, or why no draft could be made. */
+export const semanticDrafts = pgTable('semantic_drafts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  siteId: uuid('site_id')
+    .notNull()
+    .references(() => sites.id, { onDelete: 'cascade' }),
+  rangeFrom: date('range_from').notNull(),
+  rangeTo: date('range_to').notNull(),
+  body: jsonb('body').$type<Draft>(),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** A goal or funnel name a person removed or turned down, lowercased; drafts never re-add it. */
+export const semanticDismissals = pgTable(
+  'semantic_dismissals',
+  {
+    siteId: uuid('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'goal' | 'funnel'>().notNull(),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.siteId, t.kind, t.name] })],
+)
+
+export type DraftSchedule = 'off' | 'daily' | 'weekly'
+export type DraftApply = 'review' | 'auto'
 export type AiKind = 'reading' | 'summary' | 'digest' | 'semantics'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect

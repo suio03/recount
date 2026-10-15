@@ -7,6 +7,7 @@ import { extractEnded } from './replay/sessions'
 import { summarizeAll } from './replay/summarize'
 import { syncAll } from './revenue/sync'
 import { announceSetup } from './routes/account'
+import { draftDue } from './semantics/store'
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`recount api listening on http://localhost:${info.port}`)
@@ -35,3 +36,8 @@ const extractReplays = () =>
     .catch((e) => console.error('replay summarize', e))
 setTimeout(extractReplays, 20_000).unref()
 setInterval(extractReplays, 5 * 60_000).unref()
+
+// Sites that draft their semantics daily or weekly; a check each hour finds the ones due.
+const draftSemantics = () => draftDue().catch((e) => console.error('semantics drafts', e))
+setTimeout(draftSemantics, 60_000).unref()
+setInterval(draftSemantics, 3600_000).unref()

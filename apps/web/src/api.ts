@@ -63,6 +63,10 @@ export interface Site {
   firstEvent: string | null
   /** Opens the public read-only dashboard at /share/<token>. Null when off, and for viewers. */
   shareToken: string | null
+  /** How often the model drafts the site's goals and funnels. */
+  draftSchedule: 'off' | 'daily' | 'weekly'
+  /** Whether a draft's new goals and funnels are added on their own or wait for review. */
+  draftApply: 'review' | 'auto'
 }
 
 /** A site's last 24 hours, for the sites list. */
@@ -132,7 +136,9 @@ export interface RevenueSources {
   sources: RevenueSource[]
 }
 
-export type SiteChange = Partial<Pick<Site, 'name' | 'timezone' | 'currency' | 'ai'>>
+export type SiteChange = Partial<
+  Pick<Site, 'name' | 'timezone' | 'currency' | 'ai' | 'draftSchedule' | 'draftApply'>
+>
 
 export interface DateRange {
   from: string
@@ -200,6 +206,8 @@ export interface GoalDefinition {
   id: string
   name: string
   match: GoalMatch
+  /** Added from a draft rather than by a person. */
+  drafted: boolean
 }
 
 export interface FunnelStep {
@@ -211,6 +219,52 @@ export interface FunnelDefinition {
   id: string
   name: string
   steps: FunnelStep[]
+  drafted: boolean
+}
+
+/**
+ * Where a drafted goal or funnel stands: `event` for a custom event, a goal already; `added`
+ * when one with its name or rule exists (`as` names it); `taken` when its name is used by a
+ * different rule; `dismissed` when a person removed or turned it down; `new` otherwise.
+ */
+export type DraftItemStatus = 'new' | 'added' | 'taken' | 'dismissed' | 'event'
+
+export interface SemanticDraft {
+  about: string
+  conversions: Array<{
+    name: string
+    primary: boolean
+    why: string
+    match: Match
+    visitors: number
+    status: DraftItemStatus
+    as?: string
+  }>
+  funnels: Array<{
+    name: string
+    why: string
+    steps: Array<{ name: string; match: Match; visitors: number }>
+    status: DraftItemStatus
+    as?: string
+  }>
+  gaps: Array<{ title: string; why: string; code: string }>
+  dropped: string[]
+  model: string
+  generatedAt: string
+}
+
+export interface Semantics {
+  drafting: boolean
+  /** Whether the server has a model key. */
+  configured: boolean
+  latest: {
+    id: string
+    createdAt: string
+    range: { from: string; to: string }
+    /** Why no draft could be made, such as too few visitors. */
+    error: string | null
+    draft: SemanticDraft | null
+  } | null
 }
 
 export interface Goals {
@@ -479,6 +533,13 @@ export const api = {
   createFunnel: (siteId: string, input: { name: string; steps: FunnelStep[] }) =>
     send<FunnelDefinition>('POST', `/api/sites/${siteId}/funnels`, input),
   deleteFunnel: (siteId: string, id: string) => del(`/api/sites/${siteId}/funnels/${id}`),
+  semantics: (siteId: string) => get<Semantics>(`/api/sites/${siteId}/semantics`),
+  draftSemantics: (siteId: string) =>
+    send<Semantics>('POST', `/api/sites/${siteId}/semantics/draft`, {}),
+  applyDrafted: (siteId: string, kind: 'goal' | 'funnel', name: string) =>
+    send<Semantics>('POST', `/api/sites/${siteId}/semantics/apply`, { kind, name }),
+  dismissDrafted: (siteId: string, kind: 'goal' | 'funnel', name: string) =>
+    send<Semantics>('POST', `/api/sites/${siteId}/semantics/dismiss`, { kind, name }),
   me: () => get<Me>('/api/me'),
   setupNeeded: () => get<{ needed: boolean }>('/api/setup'),
   setup: (input: { setupCode: string; email: string; name: string; password: string }) =>

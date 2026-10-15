@@ -1,9 +1,9 @@
-import { semanticsFor } from '@recount/sites'
 import { and, eq, gte, inArray, sql } from 'drizzle-orm'
 import { AiUnavailable, structured } from '../ai/claude'
 import { db } from '../db/postgres'
 import { replaySummaries, type Site, sites } from '../db/schema'
 import { env } from '../env'
+import { semanticsOf } from '../semantics/store'
 import { rows } from '../stats/queries'
 import {
   type Candidate,
@@ -36,7 +36,7 @@ export async function writeSummary(site: Site, c: Candidate, reasons: Reason[]):
     kind: 'summary',
     model: env.REPLAY_MODEL,
     system: SYSTEM,
-    user: prompt(site, c, timeline, reasons),
+    user: prompt(site, c, timeline, reasons, await semanticsOf(site)),
     schema: Output,
     maxTokens: 1500,
   })
@@ -104,9 +104,7 @@ async function save(site: Site, c: Candidate, reasons: Reason[], summary: Summar
  */
 export async function summarizeSite(site: Site) {
   const keyEvents = new Set(
-    semanticsFor(site.domain)
-      ?.events.filter((e) => e.key)
-      .map((e) => e.name),
+    (await semanticsOf(site))?.events.filter((e) => e.key).map((e) => e.name),
   )
   const found = (await candidates(site.id))
     .map((c) => ({ c, reasons: reasonsOf(c, keyEvents) }))
@@ -186,9 +184,7 @@ export async function summarizeSession(site: Site, sessionId: string) {
       `session ${sessionId} has no extracted timeline in the last ${LOOKBACK_DAYS} days`,
     )
   const keyEvents = new Set(
-    semanticsFor(site.domain)
-      ?.events.filter((e) => e.key)
-      .map((e) => e.name),
+    (await semanticsOf(site))?.events.filter((e) => e.key).map((e) => e.name),
   )
   const reasons = reasonsOf(c, keyEvents)
   const summary = await writeSummary(site, c, reasons)

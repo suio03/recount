@@ -21,6 +21,7 @@ import { forgetDomain } from '../sites'
 import { currentVisitors, rows } from '../stats/queries'
 import { funnelRoutes, goalRoutes } from './goals'
 import { revenueRoutes } from './revenue'
+import { semanticsRoutes } from './semantics'
 import { statsRoutes } from './stats'
 
 export type SiteEnv = AuthEnv & { Variables: { site: Site; role: Role } }
@@ -133,12 +134,22 @@ adminRoutes.post('/api/sites', async (c) => {
 })
 
 const SiteChange = z
-  .object({ name: Name, timezone: Timezone, currency: Currency, ai: z.boolean() })
+  .object({
+    name: Name,
+    timezone: Timezone,
+    currency: Currency,
+    ai: z.boolean(),
+    draftSchedule: z.enum(['off', 'daily', 'weekly']),
+    draftApply: z.enum(['review', 'auto']),
+  })
   .partial()
 
 const forbidden = (c: Context) => c.json({ error: 'not allowed' }, 403)
 
-/** Renames a site, moves its timezone or currency, or turns the model's reading on or off. */
+/**
+ * Renames a site, moves its timezone or currency, turns the model's reading on or off, or sets
+ * how often it drafts the site's goals and funnels and whether they are added on their own.
+ */
 adminRoutes.patch('/api/sites/:id', async (c) => {
   if (!atLeast(c.get('role'), 'admin')) return forbidden(c)
   const parsed = SiteChange.safeParse(await c.req.json().catch(() => null))
@@ -263,6 +274,7 @@ adminRoutes.route('/api/sites/:id/stats', statsRoutes)
 adminRoutes.route('/api/sites/:id/revenue', revenueRoutes)
 adminRoutes.route('/api/sites/:id/goals', goalRoutes)
 adminRoutes.route('/api/sites/:id/funnels', funnelRoutes)
+adminRoutes.route('/api/sites/:id/semantics', semanticsRoutes)
 
 /** A session's recording, for the replay player. Offsets count from its first event. */
 adminRoutes.get('/api/sites/:id/replays/:session', async (c) => {

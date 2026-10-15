@@ -5,7 +5,8 @@ import { z } from 'zod'
 import { atLeast } from '../auth'
 import { db } from '../db/postgres'
 import { funnels, goals } from '../db/schema'
-import { BUILT_IN_EVENTS, GoalMatch, Match } from '../stats/goals'
+import { dismiss, undismiss } from '../semantics/store'
+import { BUILT_IN_EVENTS, GoalMatch, MAX_FUNNELS, MAX_GOALS, Match } from '../stats/goals'
 import { rows } from '../stats/queries'
 import type { SiteEnv } from './admin'
 
@@ -13,8 +14,6 @@ import type { SiteEnv } from './admin'
 export const goalRoutes = new Hono<SiteEnv>()
 export const funnelRoutes = new Hono<SiteEnv>()
 
-const MAX_GOALS = 50
-const MAX_FUNNELS = 20
 /** Custom events seen this recently are offered as funnel steps. */
 const EVENT_DAYS = 90
 
@@ -43,7 +42,7 @@ goalRoutes.get('/', async (c) => {
     ),
   ])
   return c.json({
-    goals: defined.map(({ id, name, match }) => ({ id, name, match })),
+    goals: defined.map(({ id, name, match, drafted }) => ({ id, name, match, drafted })),
     events: events.map((e) => e.name),
   })
 })
@@ -65,10 +64,14 @@ goalRoutes.post('/', async (c) => {
     .onConflictDoNothing()
     .returning()
   if (!goal) return c.json({ error: `There is already a goal named ${parsed.data.name}` }, 409)
-  return c.json({ id: goal.id, name: goal.name, match: goal.match }, 201)
+  await undismiss(siteId, 'goal', goal.name)
+  return c.json({ id: goal.id, name: goal.name, match: goal.match, drafted: false }, 201)
 })
 
-/** Deletes a goal. Funnels keep their own copy of its rule, so they are unchanged. */
+/**
+ * Deletes a goal. Funnels keep their own copy of its rule, so they are unchanged. Drafts do not
+ * add a goal of that name again on their own.
+ */
 goalRoutes.delete('/:goal', async (c) => {
   const id = c.req.param('goal')
   if (!z.uuid().safeParse(id).success) return c.json({ error: 'not found' }, 404)
@@ -76,13 +79,20 @@ goalRoutes.delete('/:goal', async (c) => {
     .delete(goals)
     .where(and(eq(goals.id, id), eq(goals.siteId, c.get('site').id)))
     .returning()
-  return gone ? c.json({ ok: true }) : c.json({ error: 'not found' }, 404)
+  if (!gone) return c.json({ error: 'not found' }, 404)
+  await dismiss(gone.siteId, 'goal', gone.name)
+  return c.json({ ok: true })
 })
 
 funnelRoutes.get('/', async (c) =>
   c.json(
     await db
-      .select({ id: funnels.id, name: funnels.name, steps: funnels.steps })
+      .select({
+        id: funnels.id,
+        name: funnels.name,
+        steps: funnels.steps,
+        drafted: funnels.drafted,
+      })
       .from(funnels)
       .where(eq(funnels.siteId, c.get('site').id))
       .orderBy(funnels.createdAt),
@@ -109,7 +119,8 @@ funnelRoutes.post('/', async (c) => {
     .onConflictDoNothing()
     .returning()
   if (!funnel) return c.json({ error: `There is already a funnel named ${parsed.data.name}` }, 409)
-  return c.json({ id: funnel.id, name: funnel.name, steps: funnel.steps }, 201)
+  await undismiss(siteId, 'funnel', funnel.name)
+  return c.json({ id: funnel.id, name: funnel.name, steps: funnel.steps, drafted: false }, 201)
 })
 
 funnelRoutes.delete('/:funnel', async (c) => {
@@ -119,5 +130,7 @@ funnelRoutes.delete('/:funnel', async (c) => {
     .delete(funnels)
     .where(and(eq(funnels.id, id), eq(funnels.siteId, c.get('site').id)))
     .returning()
-  return gone ? c.json({ ok: true }) : c.json({ error: 'not found' }, 404)
+  if (!gone) return c.json({ error: 'not found' }, 404)
+  await dismiss(gone.siteId, 'funnel', gone.name)
+  return c.json({ ok: true })
 })

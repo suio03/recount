@@ -139,8 +139,12 @@ Next:
    it is marked as a guess.
    Started: the inventory, the draft and its checks, run from the `semantics` CLI. The seed's
    `autocapture` demo has the same traffic as `demo` without custom events, to show what a draft
-   finds from pageviews and clicks alone. Next: storing drafts, the schedule, applying them, the
-   dashboard view, then the questions.
+   finds from pageviews and clicks alone. Drafts are stored per site (the last 10), made on the
+   site's schedule or with "Draft now", and shown under "Drafted by AI" in site settings, where
+   admins add or turn down each goal and funnel or let new ones apply on their own. A drafted
+   name that a person removed or turned down is never added again on its own, and an existing
+   rule is never replaced. Readings and replay summaries use the latest draft where `sites/` has
+   no catalog. Next: the built-in questions, then gaps from blind-spot signals.
 2. **Instrumentation by coding agents**: tracking rules published as `llms.txt` and a snippet for
    AGENTS.md; a server-side event endpoint authenticated with an API key, joined to the visitor
    through the id passed from the browser, as with `recount.ids()`; an MCP server with

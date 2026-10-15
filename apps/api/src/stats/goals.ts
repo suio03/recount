@@ -36,6 +36,10 @@ export interface GoalDefinition {
   match: GoalMatch
 }
 
+/** Per site. */
+export const MAX_GOALS = 50
+export const MAX_FUNNELS = 20
+
 /** Event names the tracker sends itself, which a defined goal may not take. */
 export const BUILT_IN_EVENTS = ['pageview', 'click']
 

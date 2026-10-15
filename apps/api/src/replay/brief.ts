@@ -1,4 +1,4 @@
-import { semanticsFor } from '@recount/sites'
+import type { SiteSemantics } from '@recount/semantic'
 import { z } from 'zod'
 import type { Site } from '../db/schema'
 import { money } from '../reading/format'
@@ -133,8 +133,13 @@ export function numbered(timeline: Interaction[]) {
   return kept.map(({ l, i }) => (i < 0 ? l : `[${i}] ${l}`)).join('\n')
 }
 
-export function prompt(site: Site, c: Candidate, timeline: Interaction[], reasons: Reason[]) {
-  const semantics = semanticsFor(site.domain)
+export function prompt(
+  site: Site,
+  c: Candidate,
+  timeline: Interaction[],
+  reasons: Reason[],
+  semantics: SiteSemantics | undefined,
+) {
   const about = semantics
     ? [
         `About the site: ${semantics.about}`,

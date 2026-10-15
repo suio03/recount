@@ -6,6 +6,7 @@ import {
   type FunnelStep,
   type GoalDefinition,
   type GoalMatch,
+  type Match,
   type Scope,
   type Site,
 } from './api'
@@ -15,8 +16,9 @@ import { SegmentedControl } from './ui/SegmentedControl'
 
 const errorOf = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
-/** A goal's rule in a few words. */
-function describe(match: GoalMatch) {
+/** A goal's or step's rule in a few words. */
+export function describe(match: Match) {
+  if (match.kind === 'event') return `Custom event ${match.name}`
   if (match.kind === 'page') return `Visited ${match.path}`
   return [
     match.text ? `Click on “${match.text}”` : 'Click',
@@ -43,9 +45,11 @@ const SCOPED_BY_GOALS = new Set([
 ])
 
 /** Refetches what a change to goals or funnels shows up in: these settings and the dashboard. */
-function useRefresh(siteId: string, changed: 'goals' | 'funnels') {
+export function useRefresh(siteId: string, changed: 'goals' | 'funnels') {
   const queryClient = useQueryClient()
   return () => {
+    // Drafted goals and funnels say whether they are added or were removed.
+    queryClient.invalidateQueries({ queryKey: ['semantics', siteId] })
     if (changed === 'goals') {
       queryClient.invalidateQueries({ queryKey: ['defined-goals', siteId] })
       queryClient.invalidateQueries({
@@ -246,7 +250,10 @@ function GoalRow({
     <li className="flex flex-wrap items-center justify-between gap-2 border-line border-t py-2 first:border-t-0">
       <span className="min-w-0">
         <span className="block text-body font-medium">{goal.name}</span>
-        <span className="block truncate text-label text-muted">{describe(goal.match)}</span>
+        <span className="block truncate text-label text-muted">
+          {describe(goal.match)}
+          {goal.drafted && ' · drafted by AI'}
+        </span>
       </span>
       <ConfirmButton label="Delete" confirm="Confirm delete" disabled={busy} onConfirm={onDelete} />
     </li>
@@ -324,6 +331,7 @@ export function FunnelSettings({ site }: { site: Site }) {
                 <span className="block text-body font-medium">{f.name}</span>
                 <span className="block truncate text-label text-muted">
                   {f.steps.map((s) => s.name).join(' → ')}
+                  {f.drafted && ' · drafted by AI'}
                 </span>
               </span>
               <ConfirmButton
