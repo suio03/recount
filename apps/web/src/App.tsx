@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown, CircleUser, LogOut, SlidersHorizontal } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   api,
@@ -29,7 +29,6 @@ import { NewSite, SiteSettings } from './SiteSettings'
 import { SitesList } from './SitesList'
 import { HostIcon } from './ui/HostIcon'
 import { Logo } from './ui/Logo'
-import { Switch } from './ui/Switch'
 
 /** The realtime view refetches this often. */
 const REALTIME_REFRESH_MS = 30_000
@@ -115,57 +114,56 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
   const openNew = () => navigate({ to: '/new' })
   return (
     <>
-      <AppHeader>
-        <div className="flex flex-wrap items-center gap-4">
-          <Link
-            to="/"
-            title="All sites"
-            className="flex cursor-pointer items-center gap-2 text-base font-semibold tracking-[-0.01em]"
-          >
-            <Logo />
-            recount
-          </Link>
-          {site && (view === 'dashboard' || view === 'site') && (
-            <>
-              <span className="h-5 w-px bg-line" aria-hidden="true" />
+      <TopBar>
+        <Link
+          to="/"
+          title="All sites"
+          className="flex cursor-pointer items-center gap-2.5 text-title font-semibold tracking-[-0.01em]"
+        >
+          <Logo className="size-7" />
+          recount
+        </Link>
+        <AccountMenu name={me.user?.name} email={me.user?.email} current={settings} />
+      </TopBar>
+      {site && (dashboard || view === 'site') && (
+        <SiteBar>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="flex min-w-0 items-center gap-1">
               {sites.data && (
                 <SitePicker
                   sites={sites.data}
                   current={site}
                   // A site's settings stay open on the next site.
-                  onChange={(next) => openSite(next, view)}
+                  onChange={(next) => openSite(next, view === 'site' ? 'site' : 'dashboard')}
                   onAdd={canAdd ? openNew : undefined}
                 />
               )}
-              <CurrentVisitors
-                site={{ siteId: site.id }}
-                onOpen={() =>
-                  navigate({
-                    to: '/sites/$domain',
-                    params: { domain: site.domain },
-                    search: toSearch({ preset: 'realtime' }, state.filters),
-                  })
-                }
-              />
-              {site.role !== 'viewer' && <AiSwitch site={site} />}
               {site.role !== 'viewer' && (
                 <Link
                   to={view === 'site' ? '/sites/$domain' : '/sites/$domain/settings'}
                   params={{ domain: site.domain }}
                   search={true}
+                  aria-label="Site settings"
                   aria-pressed={view === 'site'}
-                  title="This site: install, goals and funnels, revenue, public link, delete"
-                  className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-2 text-label font-medium text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
+                  title="Site settings: install, goals and funnels, revenue, public link"
+                  className="grid size-8 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
                 >
                   <SlidersHorizontal className="size-4" strokeWidth={1.75} aria-hidden="true" />
-                  Site settings
                 </Link>
               )}
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {dashboard && site && range && (
+            </span>
+            <CurrentVisitors
+              site={{ siteId: site.id }}
+              onOpen={() =>
+                navigate({
+                  to: '/sites/$domain',
+                  params: { domain: site.domain },
+                  search: toSearch({ preset: 'realtime' }, state.filters),
+                })
+              }
+            />
+          </div>
+          {dashboard && range && (
             <PeriodPicker
               period={state.period}
               range={range}
@@ -174,23 +172,11 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
               onChange={state.setPeriod}
             />
           )}
-          {me.user && (
-            <Link
-              to={settings ? '/' : '/account'}
-              aria-label="Account"
-              aria-pressed={settings}
-              title="Your account: profile, team, API keys and usage"
-              className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
-            >
-              <CircleUser className="size-4" strokeWidth={1.75} />
-            </Link>
-          )}
-          <SignOut />
-        </div>
-      </AppHeader>
+        </SiteBar>
+      )}
 
       {list && (
-        <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-6 pb-12 sm:px-6">
+        <main className="mx-auto flex max-w-[1360px] flex-col gap-4 px-4 pt-2 pb-16 sm:px-6 sm:pt-4">
           {sites.data && sites.data.length > 0 ? (
             <>
               <PageTitle
@@ -210,7 +196,7 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
         </main>
       )}
       {!dashboard && !list && (
-        <main className="mx-auto flex max-w-3xl flex-col gap-3 px-4 pt-6 pb-12 sm:box-content sm:px-6">
+        <main className="mx-auto flex max-w-3xl flex-col gap-4 px-4 pt-4 pb-16 sm:box-content sm:px-6">
           {settings && (
             <>
               <PageTitle title="Account" detail="Your profile, team, API keys and usage" />
@@ -227,7 +213,7 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
         </main>
       )}
       {dashboard && (
-        <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-4 pb-12 sm:px-6">
+        <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-2 pb-16 sm:px-6">
           <SitesView sites={sites} me={me} canAdd={canAdd} onCreated={openCreated} />
           <FilterBar
             filters={state.filters}
@@ -251,24 +237,30 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
   )
 }
 
-/**
- * The bar across the top of every signed-in and shared page, kept in view while scrolling so the
- * site, period and account stay at hand.
- */
-function AppHeader({ children }: { children: ReactNode }) {
+/** The brand and the account, with room around them. Scrolls away with the page. */
+function TopBar({ children }: { children: ReactNode }) {
   return (
-    <header className="sticky top-0 z-30 border-line border-b bg-canvas">
-      <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+    <header className="relative z-40 mx-auto flex max-w-[1360px] items-center justify-between gap-3 px-4 pt-6 pb-4 sm:px-6 sm:pt-8 sm:pb-6">
+      {children}
+    </header>
+  )
+}
+
+/** The site and period, kept in view while scrolling on screens wide enough to spare the room. */
+function SiteBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative z-30 bg-canvas sm:sticky sm:top-0">
+      <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-6">
         {children}
       </div>
-    </header>
+    </div>
   )
 }
 
 function PageTitle({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="grid gap-0.5 pb-1">
-      <h1 className="m-0 text-title font-semibold tracking-[-0.01em]">{title}</h1>
+    <div className="mb-2 grid gap-1 border-b border-line pb-5">
+      <h1 className="m-0 text-kpi font-semibold">{title}</h1>
       <p className="m-0 text-body text-muted">{detail}</p>
     </div>
   )
@@ -295,7 +287,8 @@ export function Shared() {
   const range = resolve(state.period, timezone, firstEvent, now)
   return (
     <>
-      <AppHeader>
+      <div className="h-4 sm:h-6" aria-hidden="true" />
+      <SiteBar>
         <div className="flex flex-wrap items-center gap-4">
           <span className="inline-flex items-center gap-2 text-title font-semibold tracking-[-0.01em]">
             <HostIcon host={domain} share={token} className="size-5" />
@@ -314,7 +307,7 @@ export function Shared() {
           firstEvent={firstEvent}
           onChange={state.setPeriod}
         />
-      </AppHeader>
+      </SiteBar>
       <main className="mx-auto flex max-w-[1360px] flex-col gap-3 px-4 pt-4 pb-12 sm:px-6">
         <FilterBar
           filters={state.filters}
@@ -364,47 +357,75 @@ function SitesView({
   return <NewSite me={me} onCreated={onCreated} />
 }
 
-function SignOut() {
+/** The signed-in person's account and signing out, kept in one menu. */
+function AccountMenu({
+  name,
+  email,
+  current,
+}: {
+  name?: string
+  email?: string
+  current: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const signOut = useMutation({
     mutationFn: api.signOut,
     onSuccess: () => queryClient.resetQueries(),
   })
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('pointerdown', onPointer)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onPointer)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  const item =
+    'flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-label hover:bg-sunken'
   return (
-    <button
-      type="button"
-      onClick={() => signOut.mutate()}
-      aria-label="Sign out"
-      title="Sign out"
-      className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink"
-    >
-      <LogOut className="size-4" strokeWidth={1.75} />
-    </button>
-  )
-}
-
-/** Per site, since a wiki or reference site rarely needs the model reading it. */
-function AiSwitch({ site }: { site: Site }) {
-  const queryClient = useQueryClient()
-  const change = useMutation({
-    mutationFn: (ai: boolean) => api.setAi(site.id, ai),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<Site[]>(['sites'], (all) =>
-        all?.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)),
-      )
-      for (const key of ['reading', 'replays', 'replayDigest'])
-        queryClient.invalidateQueries({ queryKey: [key] })
-    },
-  })
-  return (
-    <span title="The reading, replay summaries and the patterns across them. Off means no model calls for this site.">
-      <Switch
-        label="AI analysis"
-        checked={change.isPending ? (change.variables ?? site.ai) : site.ai}
-        disabled={change.isPending}
-        onChange={(ai) => change.mutate(ai)}
-      />
-    </span>
+    <div ref={box} className="relative">
+      <button
+        type="button"
+        aria-label="Account"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-pressed={current}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-sm px-2 text-body font-medium hover:bg-sunken aria-expanded:bg-sunken aria-pressed:bg-sunken"
+      >
+        {name && <span className="hidden max-w-40 truncate sm:inline">{name}</span>}
+        <CircleUser className="size-6 text-muted" strokeWidth={1.5} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-20 mt-1 w-60 overflow-hidden rounded-md border border-line bg-surface py-1 shadow-pop"
+        >
+          {email && (
+            <p className="m-0 truncate border-b border-line px-3 pt-1 pb-2 text-label text-muted">
+              {email}
+            </p>
+          )}
+          {email && (
+            <Link to="/account" role="menuitem" onClick={() => setOpen(false)} className={item}>
+              <CircleUser className="size-4 text-muted" strokeWidth={1.75} aria-hidden="true" />
+              Account, team and usage
+            </Link>
+          )}
+          <button type="button" role="menuitem" onClick={() => signOut.mutate()} className={item}>
+            <LogOut className="size-4 text-muted" strokeWidth={1.75} aria-hidden="true" />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -424,7 +445,7 @@ function SitePicker({
   onAdd?: () => void
 }) {
   return (
-    <label className="relative inline-flex items-center gap-2 text-title font-semibold tracking-[-0.01em]">
+    <label className="relative inline-flex min-w-0 items-center gap-2 text-title font-semibold tracking-[-0.01em]">
       <span className="sr-only">Site</span>
       <HostIcon host={current.domain} className="size-5" />
       <select
@@ -470,7 +491,7 @@ function CurrentVisitors({
       type="button"
       onClick={onOpen}
       title="Visitors in the last 5 minutes. Open the realtime view"
-      className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 text-label font-medium text-muted tabular-nums hover:bg-sunken hover:text-ink"
+      className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-sm px-2 text-label font-medium text-muted tabular-nums hover:bg-sunken hover:text-ink"
     >
       <span className="relative flex size-2" aria-hidden="true">
         {n > 0 && (
@@ -529,7 +550,12 @@ function Dashboard({
           <Overview scope={scope} />
           {/* The overview sets the row height; a longer reading scrolls inside it. */}
           <div className="relative min-h-0">
-            <ReadingPanel scope={scope} canEnable={site.role !== 'viewer'} onShow={onShow} />
+            <ReadingPanel
+              site={site}
+              scope={scope}
+              canEnable={site.role !== 'viewer'}
+              onShow={onShow}
+            />
           </div>
         </div>
       )}

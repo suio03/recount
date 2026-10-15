@@ -92,12 +92,11 @@ export function PeriodPicker({
 
   const compared = comparisonLabel(period, range)
   const span = period.preset === 'realtime' ? 'Last 30 minutes' : rangeLabel(range)
+  const detail = compared ? `${span} · ${compared}` : span
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="text-label text-muted">
-        {span}
-        {compared && ` · ${compared}`}
-      </span>
+      {/* On narrower screens the dates move into the menu button's tooltip to keep one row. */}
+      <span className="hidden text-label text-muted xl:inline">{detail}</span>
       <div className="flex items-center gap-2">
         <div className="inline-flex rounded-sm bg-sunken p-0.5">
           <StepButton
@@ -122,11 +121,12 @@ export function PeriodPicker({
             type="button"
             aria-haspopup="menu"
             aria-expanded={open}
+            title={detail}
             onClick={() => {
               setOpen((o) => !o)
               setCustom(false)
             }}
-            className="inline-flex h-7 min-w-40 cursor-pointer items-center justify-between gap-2 rounded-sm border border-line bg-surface px-2.5 text-label font-medium hover:border-line-strong"
+            className="inline-flex h-9 min-w-44 cursor-pointer items-center justify-between gap-2 rounded-sm border border-line bg-surface px-3 text-label font-medium hover:border-line-strong"
           >
             {periodLabel(period, timezone)}
             <ChevronDown className="size-4 text-muted" strokeWidth={1.75} />
@@ -200,7 +200,7 @@ function StepButton({
       title={`${label} (${hint})`}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-6 cursor-pointer place-items-center rounded-[4px] text-muted hover:bg-surface hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+      className="grid size-8 cursor-pointer place-items-center rounded-[4px] text-muted hover:bg-surface hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
     >
       {children}
     </button>

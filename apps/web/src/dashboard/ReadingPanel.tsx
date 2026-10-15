@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { api, type Filters, type Finding, type ReadingResult, type Scope } from '../api'
+import { api, type Filters, type Finding, type ReadingResult, type Scope, type Site } from '../api'
 import { cx } from '../ui/cx'
 import { Delta } from '../ui/Delta'
+import { AiSwitch } from './AiSwitch'
 import { FILTER_LABELS, filterValueLabel, MONO_FILTERS } from './filters'
 import { compact, duration, money, percent } from './format'
 
@@ -73,10 +74,12 @@ function Change({ finding: f }: { finding: Finding }) {
  * only serif text on the dashboard; every number it relies on links back to a filtered view.
  */
 export function ReadingPanel({
+  site,
   scope,
   canEnable,
   onShow,
 }: {
+  site: Pick<Site, 'id' | 'ai'>
   scope: Scope
   /** Whether the viewer is an admin, who can switch AI on and rewrite the reading. */
   canEnable: boolean
@@ -109,21 +112,24 @@ export function ReadingPanel({
     >
       <header className="flex min-h-7 items-center justify-between gap-3">
         <h2 className="m-0 text-body font-semibold">The reading</h2>
-        {data?.status === 'ok' && canEnable && (
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={refreshing}
-            aria-label="Rewrite the reading"
-            title="Rewrite the reading"
-            className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink disabled:cursor-default"
-          >
-            <RefreshCw
-              className={cx('size-3.5', refreshing && 'animate-spin')}
-              strokeWidth={1.75}
-            />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {data?.status === 'ok' && canEnable && (
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              aria-label="Rewrite the reading"
+              title="Rewrite the reading"
+              className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink disabled:cursor-default"
+            >
+              <RefreshCw
+                className={cx('size-3.5', refreshing && 'animate-spin')}
+                strokeWidth={1.75}
+              />
+            </button>
+          )}
+          {canEnable && <AiSwitch site={site} />}
+        </div>
       </header>
 
       {query.isError ? (
@@ -185,9 +191,7 @@ function Body({
       {data.status === 'off' && (
         <p className="m-0 text-muted">
           AI analysis is off for this site, so these changes are not explained.{' '}
-          {canEnable
-            ? 'Turn it on at the top of the page.'
-            : 'An admin of this site can turn it on.'}
+          {canEnable ? 'Switch it on above.' : 'An admin of this site can turn it on.'}
         </p>
       )}
       {data.status === 'unconfigured' && (
