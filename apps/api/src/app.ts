@@ -36,7 +36,7 @@ for (const file of ['script.js', 'replay.js'])
   })
 
 // The dashboard. Its file names are content-hashed, so they can be cached for good; every other
-// path gets index.html and the app reads the view from the query string.
+// path gets index.html and the app reads the view from the path.
 app.use(
   '/assets/*',
   serveStatic({

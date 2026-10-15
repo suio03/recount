@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown, CircleUser, LogOut, SlidersHorizontal } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
@@ -15,13 +16,13 @@ import {
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
 import { FilterBar } from './dashboard/FilterBar'
 import { FunnelPanel } from './dashboard/FunnelPanel'
-import { readFilters } from './dashboard/filters'
 import { GoalsPanel } from './dashboard/GoalsPanel'
 import { Overview } from './dashboard/Overview'
 import { PeriodPicker } from './dashboard/PeriodPicker'
-import { type Period, readPeriod, resolve, writePeriod } from './dashboard/period'
+import { type Period, resolve } from './dashboard/period'
 import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
+import { fromSearch, toSearch } from './dashboard/search'
 import { Settings } from './Settings'
 import { AcceptInvite, SignIn } from './SignIn'
 import { NewSite, SiteSettings } from './SiteSettings'
@@ -35,46 +36,26 @@ const REALTIME_REFRESH_MS = 30_000
 /** The live count beside the site's name refetches this often. */
 const CURRENT_REFRESH_MS = 30_000
 
-type View = 'sites' | 'dashboard' | 'settings' | 'site' | 'new-site'
-const VIEWS: View[] = ['sites', 'dashboard', 'settings', 'site', 'new-site']
+export type View = 'sites' | 'dashboard' | 'settings' | 'site' | 'new-site'
 
-/** Site, period and filters live in the query string so a view can be reloaded and shared. */
-function useUrlState() {
-  const params = new URLSearchParams(window.location.search)
-  // Without a site in the address, the list of sites opens first.
-  const [view, setView] = useState<View>(
-    () =>
-      VIEWS.find((v) => v === params.get('view')) ?? (params.get('site') ? 'dashboard' : 'sites'),
-  )
-  const [domain, setDomain] = useState(params.get('site') ?? undefined)
-  const [period, setPeriod] = useState<Period>(() => readPeriod(params))
-  const [filters, setFilters] = useState<Filters>(() => readFilters(params))
-  useEffect(() => {
-    const next = new URLSearchParams()
-    if (view !== 'dashboard' && view !== 'sites') next.set('view', view)
-    if (domain && view !== 'sites') next.set('site', domain)
-    writePeriod(period, next)
-    for (const [key, value] of Object.entries(filters)) if (value) next.set(key, value)
-    window.history.replaceState(null, '', `?${next}${window.location.hash}`)
-  }, [view, domain, period, filters])
+/** The period and filters of the dashboard on this path, kept in the query string. */
+function useDashboardSearch() {
+  const search = useSearch({ strict: false })
+  const navigate = useNavigate()
+  const { period, filters } = useMemo(() => fromSearch(search), [search])
+  const go = (next: Period, nextFilters: Filters) =>
+    navigate({ to: '.', search: toSearch(next, nextFilters) })
   return {
-    view,
-    setView,
-    domain,
-    // Filter values belong to one site, so switching sites starts unfiltered. A site's settings
-    // stay open on the next site.
-    setDomain: (d: string | undefined, next?: View) => {
-      setDomain(d)
-      setFilters({})
-      setView((v) => next ?? (v === 'site' ? 'site' : 'dashboard'))
-    },
     period,
-    setPeriod,
+    setPeriod: (next: Period) => go(next, filters),
     filters,
-    setFilter: (key: FilterKey, value: string) => setFilters((f) => ({ ...f, [key]: value })),
-    removeFilter: (key: FilterKey) => setFilters(({ [key]: _, ...rest }) => rest),
-    clearFilters: () => setFilters({}),
-    replaceFilters: setFilters,
+    setFilter: (key: FilterKey, value: string) => go(period, { ...filters, [key]: value }),
+    removeFilter: (key: FilterKey) => {
+      const { [key]: _, ...rest } = filters
+      go(period, rest)
+    },
+    clearFilters: () => go(period, {}),
+    replaceFilters: (next: Filters) => go(period, next),
   }
 }
 
@@ -90,90 +71,95 @@ function useInviteToken() {
   return [token, done] as const
 }
 
-/** A public link opens /share/<token>: the dashboard without signing in. */
-const shareToken = () => /^\/share\/([\w-]{20,})\/?$/.exec(window.location.pathname)?.[1]
-
-export function App() {
-  const [share] = useState(shareToken)
-  if (share) return <Shared token={share} />
-  return <Accounts />
-}
-
-function Accounts() {
+export function Accounts({ view }: { view: View }) {
   const [invite, inviteDone] = useInviteToken()
   const me = useQuery({ queryKey: ['me'], queryFn: api.me, enabled: !invite })
   if (invite) return <AcceptInvite token={invite} onDone={inviteDone} />
   if (me.error instanceof ApiError && me.error.status === 401) return <SignIn />
   if (me.isError) return <p className="p-6 text-muted">Could not load: {String(me.error)}</p>
   if (!me.data) return null
-  return <SignedIn me={me.data} />
+  return <SignedIn me={me.data} view={view} />
 }
 
-function SignedIn({ me }: { me: Me }) {
+function SignedIn({ me, view }: { me: Me; view: View }) {
   const sites = useQuery({ queryKey: ['sites'], queryFn: api.sites })
-  const state = useUrlState()
-  const site = sites.data?.find((s) => s.domain === state.domain) ?? sites.data?.[0]
+  const { domain } = useParams({ strict: false })
+  const state = useDashboardSearch()
+  const navigate = useNavigate()
+  const site = domain ? sites.data?.find((s) => s.domain === domain) : undefined
   const realtime = state.period.preset === 'realtime'
   const now = useClock(realtime ? REALTIME_REFRESH_MS : 60_000)
   // Resolved on every tick so presets roll over at midnight and realtime moves with the clock.
   const range = site && resolve(state.period, site.timezone, site.firstEvent, now)
 
   const canAdd = me.orgs.some((o) => o.role !== 'viewer')
+  // A site that is gone, or was never this team's, falls back to the list of sites.
+  if (domain && sites.data && !site) return <Navigate to="/" replace />
   // Viewers cannot open a site's settings or add one, even from a shared link.
-  const view =
-    (state.view === 'site' && site?.role === 'viewer') || (state.view === 'new-site' && !canAdd)
-      ? 'dashboard'
-      : state.view
+  if (view === 'site' && site?.role === 'viewer')
+    return <Navigate to="/sites/$domain" params={{ domain: site.domain }} search={true} replace />
+  if (view === 'new-site' && !canAdd) return <Navigate to="/" replace />
+
   const settings = view === 'settings'
   const dashboard = view === 'dashboard'
   const list = view === 'sites'
+  // Filter values belong to one site, so another site starts unfiltered on the same period.
+  const openSite = (next: string, page: 'dashboard' | 'site' = 'dashboard') =>
+    navigate({
+      to: page === 'site' ? '/sites/$domain/settings' : '/sites/$domain',
+      params: { domain: next },
+      search: toSearch(state.period, {}),
+    })
   // A new site opens on its install snippet.
-  const openCreated = (created: Site) => state.setDomain(created.domain, 'site')
+  const openCreated = (created: Site) => openSite(created.domain, 'site')
+  const openNew = () => navigate({ to: '/new' })
   return (
     <>
       <AppHeader>
         <div className="flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            onClick={() => state.setView('sites')}
+          <Link
+            to="/"
             title="All sites"
             className="flex cursor-pointer items-center gap-2 text-base font-semibold tracking-[-0.01em]"
           >
             <Logo />
             recount
-          </button>
-          {!settings && view !== 'new-site' && view !== 'sites' && (
+          </Link>
+          {site && (view === 'dashboard' || view === 'site') && (
             <>
               <span className="h-5 w-px bg-line" aria-hidden="true" />
-              {sites.data && sites.data.length > 0 && site && (
+              {sites.data && (
                 <SitePicker
                   sites={sites.data}
                   current={site}
-                  onChange={state.setDomain}
-                  onAdd={canAdd ? () => state.setView('new-site') : undefined}
+                  // A site's settings stay open on the next site.
+                  onChange={(next) => openSite(next, view)}
+                  onAdd={canAdd ? openNew : undefined}
                 />
               )}
-              {site && (
-                <CurrentVisitors
-                  site={{ siteId: site.id }}
-                  onOpen={() => {
-                    state.setView('dashboard')
-                    state.setPeriod({ preset: 'realtime' })
-                  }}
-                />
-              )}
-              {site && site.role !== 'viewer' && <AiSwitch site={site} />}
-              {site && site.role !== 'viewer' && (
-                <button
-                  type="button"
-                  onClick={() => state.setView(view === 'site' ? 'dashboard' : 'site')}
+              <CurrentVisitors
+                site={{ siteId: site.id }}
+                onOpen={() =>
+                  navigate({
+                    to: '/sites/$domain',
+                    params: { domain: site.domain },
+                    search: toSearch({ preset: 'realtime' }, state.filters),
+                  })
+                }
+              />
+              {site.role !== 'viewer' && <AiSwitch site={site} />}
+              {site.role !== 'viewer' && (
+                <Link
+                  to={view === 'site' ? '/sites/$domain' : '/sites/$domain/settings'}
+                  params={{ domain: site.domain }}
+                  search={true}
                   aria-pressed={view === 'site'}
                   title="This site: install, goals and funnels, revenue, public link, delete"
                   className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-sm px-2 text-label font-medium text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
                 >
                   <SlidersHorizontal className="size-4" strokeWidth={1.75} aria-hidden="true" />
                   Site settings
-                </button>
+                </Link>
               )}
             </>
           )}
@@ -189,16 +175,15 @@ function SignedIn({ me }: { me: Me }) {
             />
           )}
           {me.user && (
-            <button
-              type="button"
-              onClick={() => state.setView(settings ? 'dashboard' : 'settings')}
+            <Link
+              to={settings ? '/' : '/account'}
               aria-label="Account"
               aria-pressed={settings}
               title="Your account: profile, team, API keys and usage"
               className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink"
             >
               <CircleUser className="size-4" strokeWidth={1.75} />
-            </button>
+            </Link>
           )}
           <SignOut />
         </div>
@@ -214,9 +199,9 @@ function SignedIn({ me }: { me: Me }) {
               />
               <SitesList
                 sites={sites.data}
-                onOpen={(domain) => state.setDomain(domain, 'dashboard')}
-                onSettings={(domain) => state.setDomain(domain, 'site')}
-                onAdd={canAdd ? () => state.setView('new-site') : undefined}
+                onOpen={(d) => openSite(d)}
+                onSettings={(d) => openSite(d, 'site')}
+                onAdd={canAdd ? openNew : undefined}
               />
             </>
           ) : (
@@ -236,7 +221,7 @@ function SignedIn({ me }: { me: Me }) {
           {view === 'site' && site && (
             <>
               <PageTitle title="Site settings" detail={site.domain} />
-              <SiteSettings site={site} onDeleted={() => state.setDomain(undefined, 'sites')} />
+              <SiteSettings site={site} onDeleted={() => navigate({ to: '/' })} />
             </>
           )}
         </main>
@@ -290,7 +275,8 @@ function PageTitle({ title, detail }: { title: string; detail: string }) {
 }
 
 /** A site's public dashboard: the numbers, with no AI panels or recordings. */
-function Shared({ token }: { token: string }) {
+export function Shared() {
+  const { token } = useParams({ from: '/share/$token' })
   const site = useQuery({
     queryKey: ['shared', token],
     queryFn: () => api.sharedSite(token),
@@ -298,7 +284,7 @@ function Shared({ token }: { token: string }) {
     retry: (failures, error) =>
       !(error instanceof ApiError && error.status === 404) && failures < 3,
   })
-  const state = useUrlState()
+  const state = useDashboardSearch()
   const realtime = state.period.preset === 'realtime'
   const now = useClock(realtime ? REALTIME_REFRESH_MS : 60_000)
   if (site.error instanceof ApiError && site.error.status === 404)
