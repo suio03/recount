@@ -88,7 +88,7 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 
 ## Roadmap
 
-Updated 2026-10-14.
+Updated 2026-10-15.
 
 Done:
 
@@ -140,11 +140,39 @@ Next:
    that look like personal data.
 3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-4. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-5. **Attribution**: first touch next to last non-direct touch; Creem sync.
-6. **Digests**: periodic email digests.
-7. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
-8. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
+4. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
+   impressions, CTR and position for the queries and landing pages behind organic search, joined
+   to Recount by landing page so a query's ranking sits next to what its visitors did afterwards.
+   - Google: the Search Analytics API, read with the `webmasters.readonly` scope. Each day is
+     fetched on its own as date × query × page, paged with `startRow`, one search type at a time.
+     The first sync backfills the 16 months Google keeps; later syncs read with `dataState=all`
+     and refetch from `first_incomplete_date`, since recent days keep changing for 2–3 days.
+   - What the dashboard must say: Google returns only the top rows (at most 50,000 a day per
+     search type, by clicks), so long-tail totals are a floor; its days are Pacific Time, not the
+     site's time zone; and totals by query, country or device count per property while totals by
+     page count per page, so the two are never added together.
+   - Bing: OAuth (`webmaster.read`) or a pasted API key, which covers every site the user has
+     verified. Its query and page stats take no date range and update weekly, so Bing gets its
+     own weekly view of top queries and pages. Query × page comes one row at a time
+     (`GetQueryPageStats`, `GetPageQueryStats`), so it is fetched when a row is opened, not
+     synced.
+   - Credentials: the hosted service uses one Google and one Bing OAuth app of ours. A
+     self-hosted instance cannot use them (redirect URLs are fixed to our domain, and an
+     open-source image cannot carry our secret), so self-hosters register their own Google app
+     and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; for Bing they can paste an API key
+     instead. Tokens are sealed under `ENCRYPTION_KEY`, as Paddle keys are. Authorization is
+     never relayed through the hosted service.
+   - Order: first a CLI that pulls one real site's history, to settle how Google's page URLs map
+     to Recount pathnames (domain and URL-prefix properties, http and https, `www`, query strings
+     and fragments) and how much the row limits cut; then storage and the scheduled sync; then
+     connecting in the dashboard and the Search panel; then publishing the hosted OAuth app,
+     which needs the privacy policy and home page from the hosted service; Bing last. It comes
+     after the hosted service because Google keeps 16 months, so waiting loses no data.
+5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+6. **Attribution**: first touch next to last non-direct touch; Creem sync.
+7. **Digests**: periodic email digests.
+8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+9. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
    conversion with confidence intervals, explained by the model.
 
 ## Known gaps in the skeleton
