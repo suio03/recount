@@ -163,12 +163,17 @@ function describe(el: Element): ElementContext {
 
 // --- Sending -----------------------------------------------------------------------------
 
-function send(name: string, extra: { props?: Props; el?: ElementContext } = {}): Promise<void> {
+function send(
+  name: string,
+  extra: { props?: Props; el?: ElementContext; url?: string } = {},
+): Promise<void> {
+  // A page still waiting for its title goes first, so events arrive in the order they happened.
+  if (extra.url === undefined) flushPageview()
   if (ignored()) return Promise.resolve()
   const payload: EventPayload = {
     s: site,
     n: name,
-    u: location.href,
+    u: extra.url ?? location.href,
     r: document.referrer || undefined,
     t: clean(document.title),
     pt: pageType(),
@@ -199,12 +204,43 @@ function send(name: string, extra: { props?: Props; el?: ElementContext } = {}):
 
 let lastUrl: string | undefined
 
-function pageview(): Promise<void> {
-  // Hash changes (in-page anchors) are not new pages.
+/** Whether the address is a new page. Hash changes (in-page anchors) are not. */
+function isNewPage(): boolean {
   const url = location.href.split('#')[0]
-  if (url === lastUrl) return Promise.resolve()
+  if (url === lastUrl) return false
   lastUrl = url
-  return send('pageview')
+  return true
+}
+
+function pageview(): Promise<void> {
+  return isNewPage() ? send('pageview') : Promise.resolve()
+}
+
+/**
+ * A single-page app changes the address first and sets the new page's title afterwards, so a
+ * pageview sent at once would carry the previous page's title. It waits for the title to change,
+ * or this long when the page keeps the same title.
+ */
+const TITLE_WAIT_MS = 500
+let waiting: { url: string; title: string; timer: ReturnType<typeof setTimeout> } | undefined
+
+function flushPageview() {
+  if (!waiting) return
+  const { url, timer } = waiting
+  waiting = undefined
+  clearTimeout(timer)
+  send('pageview', { url })
+}
+
+function navigated() {
+  // A navigation before the last page's title arrived sends that page with what it has.
+  flushPageview()
+  if (!isNewPage()) return
+  waiting = {
+    url: location.href,
+    title: document.title,
+    timer: setTimeout(flushPageview, TITLE_WAIT_MS),
+  }
 }
 
 /** A custom event from page code. A manual pageview is the automatic one, so it is not doubled. */
@@ -229,9 +265,13 @@ const history = window.history
 const pushState = history.pushState
 history.pushState = function (...args: Parameters<History['pushState']>) {
   pushState.apply(this, args)
-  pageview()
+  navigated()
 }
-window.addEventListener('popstate', pageview)
+window.addEventListener('popstate', navigated)
+new MutationObserver(() => {
+  if (waiting && document.title !== waiting.title) flushPageview()
+}).observe(document.head, { subtree: true, childList: true, characterData: true })
+window.addEventListener('pagehide', flushPageview)
 document.addEventListener('click', onClick, { capture: true })
 
 interface Recount {
