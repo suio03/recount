@@ -4,6 +4,7 @@ import type { Ending, Intent, PayingVisitor, TrailEvent } from '../api'
 import { cx } from '../ui/cx'
 import { countryFlag, countryName, money } from './format'
 import { sourceOf } from './Traffic'
+import { useWhy, type WhyContext } from './Why'
 
 const ENDINGS: Record<Ending, { label: string; className: string }> = {
   paid: { label: 'Paid', className: 'bg-up text-on-ink' },
@@ -21,12 +22,15 @@ export function TriedToPay({
   domain,
   timezone,
   canEdit,
+  why,
 }: {
   intent?: Intent
   /** Links to the site's settings, where the payment events are corrected. */
   domain?: string
   timezone: string
   canEdit: boolean
+  /** Adds "Why?" to each person. */
+  why?: WhyContext
 }) {
   if (!intent) return <div id="tried" className="h-40 animate-pulse rounded-md bg-sunken/40" />
   const { totals, previous, people, events, guessed, provider } = intent
@@ -95,7 +99,13 @@ export function TriedToPay({
       {people.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,340px),1fr))] gap-3">
           {people.map((p) => (
-            <PersonCard key={p.visitor} person={p} timezone={timezone} currency={intent.currency} />
+            <PersonCard
+              key={p.visitor}
+              person={p}
+              timezone={timezone}
+              currency={intent.currency}
+              why={why}
+            />
           ))}
         </div>
       )}
@@ -120,11 +130,14 @@ function PersonCard({
   person: p,
   timezone,
   currency,
+  why,
 }: {
   person: PayingVisitor
   timezone: string
   currency: string
+  why?: WhyContext
 }) {
+  const ask = useWhy(why, { visitor: p.visitor })
   const ending = ENDINGS[p.ending]
   const when = new Date(p.last).toLocaleString('en', {
     timeZone: timezone,
@@ -184,7 +197,11 @@ function PersonCard({
           </li>
         ))}
       </ol>
-      <footer className="text-label text-muted">Last payment event {when}</footer>
+      <footer className="flex items-center justify-between gap-2 text-label text-muted">
+        Last payment event {when}
+        {ask.button}
+      </footer>
+      {ask.answer}
     </article>
   )
 }

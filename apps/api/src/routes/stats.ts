@@ -26,6 +26,7 @@ import {
 } from '../stats/queries'
 import { intervalOf, isOpen, previousRange, RangeQuery } from '../stats/range'
 import { usualVisitors } from '../stats/usual'
+import { type Subject, WhyMissing, whyOf, writeWhy } from '../why'
 
 /** Mounted under /api/sites/:id/stats, after the site and the caller's access are checked. */
 type StatsEnv = { Variables: { scope: Scope; site: Site; role?: Role } }
@@ -261,6 +262,39 @@ statsRoutes.post('/brief', async (c) => {
   if (!atLeast(c.get('role'), 'admin'))
     return c.json({ error: 'only admins can write the brief' }, 403)
   return c.json(await writeBrief(scope))
+})
+
+/** What "Why?" is asked about: `lane=<path name>` or `visitor=<visitor id>`. */
+function subjectOf(c: Context<StatsEnv>): Subject | string {
+  const lane = c.req.query('lane')
+  const visitor = c.req.query('visitor')
+  if (lane && !visitor) return { kind: 'lane', name: lane }
+  if (visitor && !lane && /^\d{1,20}$/.test(visitor)) return { kind: 'visitor', visitor }
+  return 'one of lane=<path name> or visitor=<visitor id>'
+}
+
+/** The answer last written to "Why?" for a lane or a visitor in this range. */
+statsRoutes.get('/why', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  const subject = subjectOf(c)
+  if (typeof subject === 'string') return c.json({ error: subject }, 400)
+  return c.json(await whyOf(scope, subject))
+})
+
+/** Writes the answer to "Why?" for a lane or a visitor, replacing the last one. Admins only. */
+statsRoutes.post('/why', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  if (!atLeast(c.get('role'), 'admin')) return c.json({ error: 'only admins can ask why' }, 403)
+  const subject = subjectOf(c)
+  if (typeof subject === 'string') return c.json({ error: subject }, 400)
+  try {
+    return c.json(await writeWhy(scope, subject))
+  } catch (err) {
+    if (err instanceof WhyMissing) return c.json({ error: err.message }, 404)
+    throw err
+  }
 })
 
 /**

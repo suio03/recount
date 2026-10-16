@@ -4,6 +4,7 @@ import type { Lane, Paths as PathsData, QuietEvent } from '../api'
 import { cx } from '../ui/cx'
 import { change, Delta } from '../ui/Delta'
 import { percent } from './format'
+import { useWhy, type WhyContext } from './Why'
 
 const day = new Intl.DateTimeFormat('en', {
   weekday: 'short',
@@ -21,11 +22,14 @@ export function Paths({
   paths,
   domain,
   canEdit,
+  why,
 }: {
   paths?: PathsData
   /** Links to the site's settings, where funnels are added and drafts reviewed. */
   domain?: string
   canEdit: boolean
+  /** Adds "Why?" to each lane. */
+  why?: WhyContext
 }) {
   if (!paths) return <div id="paths" className="h-48 animate-pulse rounded-md bg-sunken/40" />
   const settings = (hash: string, text: string) =>
@@ -58,7 +62,7 @@ export function Paths({
         </p>
       </header>
       {paths.lanes.length > 0 ? (
-        paths.lanes.map((lane) => <LaneRow key={lane.id ?? lane.name} lane={lane} />)
+        paths.lanes.map((lane) => <LaneRow key={lane.id ?? lane.name} lane={lane} why={why} />)
       ) : (
         <EventList paths={paths} settings={settings} />
       )}
@@ -67,18 +71,22 @@ export function Paths({
   )
 }
 
-function LaneRow({ lane }: { lane: Lane }) {
+function LaneRow({ lane, why }: { lane: Lane; why?: WhyContext }) {
   const first = lane.steps[0]?.visitors ?? 0
+  const ask = useWhy(first ? why : undefined, { lane: lane.name })
   return (
     <div className="grid gap-2">
-      <h3 className="m-0 flex flex-wrap items-baseline gap-2 text-body font-semibold">
-        {lane.name}
-        {lane.source === 'draft' && (
-          <span className="rounded-xs border border-line px-1.5 text-label font-medium text-muted">
-            Drafted
-          </span>
-        )}
-      </h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="m-0 flex flex-wrap items-baseline gap-2 text-body font-semibold">
+          {lane.name}
+          {lane.source === 'draft' && (
+            <span className="rounded-xs border border-line px-1.5 text-label font-medium text-muted">
+              Drafted
+            </span>
+          )}
+        </h3>
+        {ask.button}
+      </div>
       <ol className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,130px),1fr))] gap-2 p-0">
         {lane.steps.map((s, i) => {
           const before = i > 0 ? (lane.steps[i - 1]?.visitors ?? 0) : 0
@@ -127,6 +135,7 @@ function LaneRow({ lane }: { lane: Lane }) {
           ))}
         </p>
       )}
+      {ask.answer}
     </div>
   )
 }

@@ -561,6 +561,7 @@ function Dashboard({
     placeholderData: (prev) => prev,
     enabled: full,
   })
+  const why = site.ai ? { siteId: site.id, scope, canWrite: site.role !== 'viewer' } : undefined
 
   return (
     <>
@@ -588,12 +589,18 @@ function Dashboard({
               domain={site.domain}
               timezone={site.timezone}
               canEdit={site.role !== 'viewer'}
+              why={why}
             />
           )}
           {paths.isError ? (
             <p className="text-muted">Could not load the paths: {String(paths.error)}</p>
           ) : (
-            <Paths paths={paths.data} domain={site.domain} canEdit={site.role !== 'viewer'} />
+            <Paths
+              paths={paths.data}
+              domain={site.domain}
+              canEdit={site.role !== 'viewer'}
+              why={why}
+            />
           )}
         </>
       ) : (

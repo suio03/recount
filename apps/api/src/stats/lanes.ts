@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/postgres'
-import { funnels } from '../db/schema'
+import { funnels, type Site } from '../db/schema'
 import { draftView } from '../semantics/store'
 import { eventNamesOf, keyEventsOf } from './intent'
 import { eventListOf, type LaneDefinition, lanesOf, MAX_LANES, sideNames } from './paths'
@@ -13,6 +13,20 @@ import { quietEvents } from './quiet'
  */
 export async function pathsFor(scope: Scope) {
   const site = scope.site
+  const { definitions, names } = await laneDefinitionsOf(site)
+  const { events } = await keyEventsOf(site, names)
+  const [lanes, list, quiet] = await Promise.all([
+    lanesOf(scope, definitions, sideNames(events, names)),
+    definitions.length ? null : eventListOf(scope),
+    quietEvents(site, scope.range),
+  ])
+  return { lanes, events: list, ai: site.ai, quiet }
+}
+
+export type PathsResult = Awaited<ReturnType<typeof pathsFor>>
+
+/** The lanes to show, funnels first and then drafted ones, with the site's custom event names. */
+export async function laneDefinitionsOf(site: Site) {
   const [defined, draft, names] = await Promise.all([
     db
       .select({ id: funnels.id, name: funnels.name, steps: funnels.steps })
@@ -29,13 +43,5 @@ export async function pathsFor(scope: Scope) {
       .filter((f) => f.status === 'new')
       .map((f) => ({ name: f.name, steps: f.steps, source: 'draft' as const })),
   ].slice(0, MAX_LANES)
-  const { events } = await keyEventsOf(site, names)
-  const [lanes, list, quiet] = await Promise.all([
-    lanesOf(scope, definitions, sideNames(events, names)),
-    definitions.length ? null : eventListOf(scope),
-    quietEvents(site, scope.range),
-  ])
-  return { lanes, events: list, ai: site.ai, quiet }
+  return { definitions, names }
 }
-
-export type PathsResult = Awaited<ReturnType<typeof pathsFor>>

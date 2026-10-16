@@ -35,24 +35,32 @@ export interface Lane {
 }
 
 /**
- * Visitors who reached each step in order, each event moving a visitor at most one step, with
- * the steps anywhere in the range among the sessions in scope.
+ * One row per visitor in scope with `level`, the furthest step they reached in order, each event
+ * moving a visitor at most one step, with the steps anywhere in the range. `columns` adds
+ * per-visitor aggregates.
  */
-export function visitorFunnelSql(scope: Scope, steps: Match[], range: DateRange) {
+export function levelsSql(scope: Scope, steps: Match[], range: DateRange, columns = '') {
   const s = sessions(scope, range)
   const matches = steps.map((m, i) => matchSql(m, `s${i}`))
   const window = days(range) * 86_400_000
   return {
-    sql: `SELECT ${steps.map((_, i) => `countIf(level >= ${i + 1}) AS s${i}`).join(', ')}
-     FROM (
-       SELECT windowFunnel(${window}, 'strict_once')(
+    sql: `SELECT visitor_id, windowFunnel(${window}, 'strict_once')(
                 toUInt64(toUnixTimestamp64Milli(timestamp)), ${matches.map((m) => m.sql).join(', ')}
-              ) AS level
+              ) AS level${columns ? `, ${columns}` : ''}
        FROM events
        WHERE ${inRange} AND session_id IN (SELECT session_id FROM (${s.sql}))
-       GROUP BY visitor_id
-     )`,
+       GROUP BY visitor_id`,
     params: Object.assign({}, s.params, ...matches.map((m) => m.params)),
+  }
+}
+
+/** Visitors who reached each step in order, among the sessions in scope. */
+export function visitorFunnelSql(scope: Scope, steps: Match[], range: DateRange) {
+  const levels = levelsSql(scope, steps, range)
+  return {
+    sql: `SELECT ${steps.map((_, i) => `countIf(level >= ${i + 1}) AS s${i}`).join(', ')}
+     FROM (${levels.sql})`,
+    params: levels.params,
   }
 }
 

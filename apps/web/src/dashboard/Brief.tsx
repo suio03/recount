@@ -8,10 +8,10 @@ import {
   type Scope,
   type Site,
 } from '../api'
-import { cx } from '../ui/cx'
 import { Button } from '../ui/Form'
 import { AiSwitch } from './AiSwitch'
 import { rangeLabel } from './format'
+import { KindTag } from './KindTag'
 
 const SECTIONS: Record<BriefSection, string> = {
   traffic: 'Traffic',
@@ -189,21 +189,7 @@ function Lines({
           key={`${i}-${line.text}`}
           className="grid items-baseline gap-x-3 gap-y-1 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto]"
         >
-          <span
-            className={cx(
-              'w-fit rounded-full px-2 py-px text-tick font-semibold uppercase tracking-[0.06em]',
-              line.kind === 'fact'
-                ? 'bg-ink text-on-ink'
-                : 'border border-dashed border-muted text-muted',
-            )}
-            title={
-              line.kind === 'fact'
-                ? 'Stated by the numbers it cites'
-                : 'An explanation the numbers suggest but do not show'
-            }
-          >
-            {line.kind === 'fact' ? 'Fact' : 'Guess'}
-          </span>
+          <KindTag kind={line.kind} />
           <p className="m-0 font-serif text-note">{line.text}</p>
           <button
             type="button"

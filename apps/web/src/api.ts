@@ -473,6 +473,21 @@ export interface BriefResult {
   error?: string
 }
 
+/** What "Why?" is asked about: one lane of the paths, or one visitor who tried to pay. */
+export type WhySubject = { lane: string } | { visitor: string }
+
+/** A few lines on why a lane or a visitor's try went the way it did, each a fact or a guess. */
+export interface WhyResult {
+  answer: {
+    range: { from: string; to: string }
+    lines: Array<{ kind: 'fact' | 'guess'; text: string }>
+    model: string
+    generatedAt: string
+  } | null
+  status: BriefResult['status']
+  error?: string
+}
+
 export type ReplayReason =
   | 'paid'
   | 'abandoned_form'
@@ -700,6 +715,9 @@ export const api = {
   funnel: (scope: Scope, id: string) => get<FunnelStats>(stats(scope, 'funnel', { id })),
   brief: (scope: Scope) => get<BriefResult>(stats(scope, 'brief')),
   writeBrief: (scope: Scope) => send<BriefResult>('POST', stats(scope, 'brief'), {}),
+  why: (scope: Scope, subject: WhySubject) => get<WhyResult>(stats(scope, 'why', subject)),
+  writeWhy: (scope: Scope, subject: WhySubject) =>
+    send<WhyResult>('POST', stats(scope, 'why', subject), {}),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
   replayDigest: (scope: Scope, refresh = false) =>
     get<ReplayDigest>(stats(scope, 'replays/digest', refresh ? { refresh: '1' } : {})),
