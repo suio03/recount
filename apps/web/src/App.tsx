@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronDown, CircleUser, LogOut, SlidersHorizontal } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   api,
@@ -16,6 +16,7 @@ import {
 import { Ask } from './dashboard/Ask'
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
 import { Brief } from './dashboard/Brief'
+import { DashboardTabs } from './dashboard/DashboardTabs'
 import { FilterBar } from './dashboard/FilterBar'
 import { FunnelPanel } from './dashboard/FunnelPanel'
 import { GoalsPanel } from './dashboard/GoalsPanel'
@@ -24,7 +25,8 @@ import { Paths } from './dashboard/Paths'
 import { PeriodPicker } from './dashboard/PeriodPicker'
 import { type Period, resolve } from './dashboard/period'
 import { SessionsPanel } from './dashboard/SessionsPanel'
-import { fromSearch, toSearch } from './dashboard/search'
+import { fromSearch, type Tab, toSearch } from './dashboard/search'
+import { OpenSection, scrollToSection, tabOf } from './dashboard/sections'
 import { Traffic } from './dashboard/Traffic'
 import { TriedToPay } from './dashboard/TriedToPay'
 import { Settings } from './Settings'
@@ -45,11 +47,13 @@ export type View = 'sites' | 'dashboard' | 'settings' | 'site' | 'new-site'
 function useDashboardSearch() {
   const search = useSearch({ strict: false })
   const navigate = useNavigate()
-  const { period, filters } = useMemo(() => fromSearch(search), [search])
-  const go = (next: Period, nextFilters: Filters) =>
-    navigate({ to: '.', search: toSearch(next, nextFilters) })
+  const { period, filters, tab } = useMemo(() => fromSearch(search), [search])
+  const go = (next: Period, nextFilters: Filters, nextTab: Tab = tab) =>
+    navigate({ to: '.', search: toSearch(next, nextFilters, nextTab) })
   return {
     period,
+    tab,
+    setTab: (next: Tab) => go(period, filters, next),
     setPeriod: (next: Period) => go(next, filters),
     filters,
     setFilter: (key: FilterKey, value: string) => go(period, { ...filters, [key]: value }),
@@ -111,7 +115,7 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
     navigate({
       to: page === 'site' ? '/sites/$domain/settings' : '/sites/$domain',
       params: { domain: next },
-      search: toSearch(state.period, {}),
+      search: toSearch(state.period, {}, state.tab),
     })
   // A new site opens on its install snippet.
   const openCreated = (created: Site) => openSite(created.domain, 'site')
@@ -229,6 +233,8 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
               key={site.id}
               site={site}
               onShowDay={(day) => state.setPeriod({ preset: 'custom', from: day, to: day })}
+              tab={state.tab}
+              onTab={state.setTab}
               range={range}
               realtime={realtime}
               filters={state.filters}
@@ -529,6 +535,8 @@ function Dashboard({
   onFilter,
   onShow,
   onShowDay,
+  tab = 'overview',
+  onTab,
 }: {
   site: Pick<Site, 'id' | 'timezone' | 'ai' | 'role'> & { domain?: string }
   /** A public link's token: only the panels the link may show. */
@@ -541,6 +549,9 @@ function Dashboard({
   onShow: (filters: Filters) => void
   /** Narrows the dashboard to one day; the shared dashboard has no day view. */
   onShowDay?: (day: string) => void
+  /** Which tab shows; the shared and realtime views have the overview only. */
+  tab?: Tab
+  onTab?: (tab: Tab) => void
 }) {
   const { from, to, since } = range
   const scope = useMemo<Scope>(
@@ -563,10 +574,94 @@ function Dashboard({
     enabled: full,
   })
   const why = site.ai ? { siteId: site.id, scope, canWrite: site.role !== 'viewer' } : undefined
+  const shown: Tab = full ? tab : 'overview'
+  const openSection = useCallback(
+    (section: string) => {
+      const target = tabOf(section)
+      if (!target || target === shown || !onTab) return scrollToSection(section)
+      onTab(target)
+      // The other tab renders first, so the scroll waits for it.
+      setTimeout(() => scrollToSection(section), 100)
+    },
+    [shown, onTab],
+  )
+  const failed = intent.data?.people.filter((p) => p.ending === 'failed').length ?? 0
+  const quiet = paths.data?.quiet.length ?? 0
+  const alertsTitle = [
+    failed && `${failed} ${failed === 1 ? 'person' : 'people'} whose payment failed`,
+    quiet && `${quiet} ${quiet === 1 ? 'event' : 'events'} gone quiet`,
+  ]
+    .filter(Boolean)
+    .join(', ')
+
+  const breakdowns = (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
+      <BreakdownPanel
+        title="Acquisition"
+        options={[
+          { value: 'channel', label: 'Channel', column: 'Channel' },
+          { value: 'referrer', label: 'Referrer', column: 'Referrer' },
+          { value: 'campaign', label: 'Campaign', column: 'Campaign' },
+        ]}
+        initial="referrer"
+        {...props}
+      />
+      <BreakdownPanel
+        title="Pages"
+        options={[
+          { value: 'page', label: 'Top', column: 'Page' },
+          { value: 'entry', label: 'Entry', column: 'Entry page' },
+        ]}
+        {...props}
+      />
+      <BreakdownPanel
+        title="Locations"
+        options={[{ value: 'country', label: 'Country', column: 'Country' }]}
+        {...props}
+      />
+      <BreakdownPanel
+        title="Devices"
+        options={[
+          { value: 'device', label: 'Device', column: 'Device' },
+          { value: 'browser', label: 'Browser', column: 'Browser' },
+          { value: 'os', label: 'OS', column: 'OS' },
+        ]}
+        {...props}
+      />
+      <GoalsPanel scope={scope} onFilter={onFilter} />
+      {/* Paths count the funnels per visitor in the full view. */}
+      {!full && <FunnelPanel scope={scope} />}
+    </div>
+  )
+
+  if (!full)
+    return (
+      <>
+        <Overview scope={scope} />
+        {breakdowns}
+      </>
+    )
 
   return (
-    <>
-      {full ? (
+    <OpenSection.Provider value={openSection}>
+      <DashboardTabs
+        tab={shown}
+        onTab={(next) => onTab?.(next)}
+        alerts={failed + quiet}
+        alertsTitle={alertsTitle}
+      />
+      {shown === 'overview' ? (
+        <>
+          <Traffic
+            scope={scope}
+            timezone={site.timezone}
+            intent={intent.data}
+            onFilter={props.onFilter}
+            onShowDay={(day) => onShowDay?.(day)}
+          />
+          {breakdowns}
+        </>
+      ) : (
         <>
           <Brief
             key={`${from}-${to}`}
@@ -583,13 +678,6 @@ function Dashboard({
               canWrite={site.role !== 'viewer'}
             />
           )}
-          <Traffic
-            scope={scope}
-            timezone={site.timezone}
-            intent={intent.data}
-            onFilter={props.onFilter}
-            onShowDay={(day) => onShowDay?.(day)}
-          />
           {intent.isError ? (
             <p className="text-muted">Could not load who tried to pay: {String(intent.error)}</p>
           ) : (
@@ -611,50 +699,15 @@ function Dashboard({
               why={why}
             />
           )}
+          {site.ai && (
+            <SessionsPanel
+              scope={scope}
+              timezone={site.timezone}
+              canRefresh={site.role !== 'viewer'}
+            />
+          )}
         </>
-      ) : (
-        <Overview scope={scope} />
       )}
-      {site.ai && !realtime && (
-        <SessionsPanel scope={scope} timezone={site.timezone} canRefresh={site.role !== 'viewer'} />
-      )}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-3">
-        <BreakdownPanel
-          title="Acquisition"
-          options={[
-            { value: 'channel', label: 'Channel', column: 'Channel' },
-            { value: 'referrer', label: 'Referrer', column: 'Referrer' },
-            { value: 'campaign', label: 'Campaign', column: 'Campaign' },
-          ]}
-          initial="referrer"
-          {...props}
-        />
-        <BreakdownPanel
-          title="Pages"
-          options={[
-            { value: 'page', label: 'Top', column: 'Page' },
-            { value: 'entry', label: 'Entry', column: 'Entry page' },
-          ]}
-          {...props}
-        />
-        <BreakdownPanel
-          title="Locations"
-          options={[{ value: 'country', label: 'Country', column: 'Country' }]}
-          {...props}
-        />
-        <BreakdownPanel
-          title="Devices"
-          options={[
-            { value: 'device', label: 'Device', column: 'Device' },
-            { value: 'browser', label: 'Browser', column: 'Browser' },
-            { value: 'os', label: 'OS', column: 'OS' },
-          ]}
-          {...props}
-        />
-        <GoalsPanel scope={scope} onFilter={onFilter} />
-        {/* Paths count the funnels per visitor in the full view. */}
-        {!full && <FunnelPanel scope={scope} />}
-      </div>
-    </>
+    </OpenSection.Provider>
   )
 }

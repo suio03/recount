@@ -12,6 +12,7 @@ import { Button } from '../ui/Form'
 import { AiSwitch } from './AiSwitch'
 import { rangeLabel } from './format'
 import { KindTag } from './KindTag'
+import { useOpenSection } from './sections'
 
 const SECTIONS: Record<BriefSection, string> = {
   traffic: 'Traffic',
@@ -174,13 +175,11 @@ function Lines({
   lines: NonNullable<BriefResult['brief']>['lines']
   onShow: (filters: Filters) => void
 }) {
+  const open = useOpenSection()
   function follow(section: BriefSection, filters?: Filters) {
     if (filters) onShow(filters)
-    // Filters re-render the sections first, so the scroll waits for them.
-    setTimeout(
-      () => document.getElementById(section)?.scrollIntoView({ behavior: 'smooth' }),
-      filters ? 150 : 0,
-    )
+    // Filters re-render the sections first, so opening waits for them.
+    setTimeout(() => open(section), filters ? 150 : 0)
   }
   return (
     <ol className="m-0 grid list-none gap-3 p-0">

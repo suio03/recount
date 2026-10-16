@@ -14,6 +14,7 @@ import { change, Delta } from '../ui/Delta'
 import { SegmentedControl } from '../ui/SegmentedControl'
 import { TrendChart } from '../ui/TrendChart'
 import { compact, countryFlag, countryName, duration, money, percent } from './format'
+import { useOpenSection } from './sections'
 
 const SOURCE_OPTIONS = [
   { value: 'channel', label: 'Channel', column: 'Channel' },
@@ -97,6 +98,7 @@ function Body({
   const usual = daily && stats.usual != null ? stats.usual : undefined
   const point = picked === undefined ? undefined : stats.series[picked]
   const keyEvents = intent?.events
+  const open = useOpenSection()
   return (
     <>
       <div className="flex flex-wrap border-b border-line">
@@ -126,6 +128,10 @@ function Body({
         {intent && (
           <a
             href="#tried"
+            onClick={(e) => {
+              e.preventDefault()
+              open('tried')
+            }}
             className="grid min-w-32 flex-1 gap-1 px-4 py-3 hover:bg-sunken"
             title="See who tried to pay"
           >
@@ -278,6 +284,7 @@ function DayDetail({
   onShow: () => void
   onClose: () => void
 }) {
+  const open = useOpenSection()
   return (
     <div className="mx-4 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-sm bg-sunken px-3 py-2 text-label">
       <span className="font-semibold text-ink">{day.format(bucketDate(t))}</span>
@@ -294,7 +301,14 @@ function DayDetail({
         <span className="font-medium tabular-nums">{pageviews.toLocaleString('en')}</span> pageviews
       </span>
       {tried > 0 && (
-        <a href="#tried" className="text-revenue hover:underline">
+        <a
+          href="#tried"
+          onClick={(e) => {
+            e.preventDefault()
+            open('tried')
+          }}
+          className="text-revenue hover:underline"
+        >
           {tried} tried to pay
           {people.length > 0 &&
             `: ${people.map((p) => `${countryFlag(p.country) ?? ''} ${sourceOf(p)}`).join(', ')}`}

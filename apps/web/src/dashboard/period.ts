@@ -42,7 +42,7 @@ export const PRESET_GROUPS: Array<Array<{ preset: Preset; label: string; key?: s
 ]
 
 const PRESETS = PRESET_GROUPS.flat()
-export const DEFAULT_PERIOD: Period = { preset: '30d' }
+export const DEFAULT_PERIOD: Period = { preset: 'today' }
 
 const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)
 const addDays = (day: string, n: number) => isoDay(Date.parse(day) + n * DAY)

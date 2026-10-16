@@ -86,16 +86,16 @@ describe('periodLabel', () => {
 })
 
 describe('readPeriod', () => {
-  it('reads presets and custom days, falling back to 30 days', () => {
+  it('reads presets and custom days, falling back to today', () => {
     expect(readPeriod(new URLSearchParams('range=today'))).toEqual({ preset: 'today' })
     expect(readPeriod(new URLSearchParams('range=custom&from=2026-10-01&to=2026-10-03'))).toEqual({
       preset: 'custom',
       from: '2026-10-01',
       to: '2026-10-03',
     })
-    expect(readPeriod(new URLSearchParams('range=90d'))).toEqual({ preset: '30d' })
+    expect(readPeriod(new URLSearchParams('range=90d'))).toEqual({ preset: 'today' })
     expect(readPeriod(new URLSearchParams('range=custom&from=2026-10-05&to=2026-10-03'))).toEqual({
-      preset: '30d',
+      preset: 'today',
     })
   })
 })
