@@ -19,6 +19,16 @@ export interface TrendChartProps {
   formatRevenue?: (revenue: number) => string
   /** AI annotations pinned to a point; `n` matches the InsightNote number. */
   annotations?: Array<{ index: number; n: number }>
+  /** A usual value, drawn as a dashed line across the chart. */
+  usual?: number
+  /** Points marked under the line, such as days on which somebody tried to pay. */
+  markers?: number[]
+  /** What a marker means, for the tooltip. */
+  markerLabel?: (index: number) => string | undefined
+  /** Makes points clickable: called with the point's index. */
+  onPick?: (index: number) => void
+  /** The point picked, kept highlighted. */
+  picked?: number
   height?: number
 }
 
@@ -64,6 +74,11 @@ export function TrendChart({
   format = (v) => v.toLocaleString('en'),
   formatRevenue,
   annotations = [],
+  usual,
+  markers = [],
+  markerLabel,
+  onPick,
+  picked,
   height = 240,
 }: TrendChartProps) {
   const box = useRef<HTMLDivElement>(null)
@@ -81,7 +96,7 @@ export function TrendChart({
   const pad = { t: 24, r: 8, b: 24, l: 40 }
   const iw = Math.max(1, width - pad.l - pad.r)
   const ih = height - pad.t - pad.b
-  const vMax = niceMax(Math.max(1, ...data.map((d) => d.value)))
+  const vMax = niceMax(Math.max(1, usual ?? 0, ...data.map((d) => d.value)))
   const rMax = Math.max(1, ...data.map((d) => d.revenue ?? 0)) * 1.6
   const step = iw / Math.max(1, data.length)
   const x = (i: number) => pad.l + step * i + step / 2
@@ -104,11 +119,12 @@ export function TrendChart({
       <svg
         width={width}
         height={height}
-        className="block"
         role="img"
         aria-label={`${metric} by ${interval}`}
+        className={onPick ? 'block cursor-pointer' : 'block'}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(undefined)}
+        onClick={() => hover !== undefined && onPick?.(hover)}
       >
         {[0, 0.5, 1].map((f) => (
           <g key={f}>
@@ -129,6 +145,15 @@ export function TrendChart({
             </text>
           </g>
         ))}
+        {picked !== undefined && data[picked] && (
+          <rect
+            className="fill-visitors-soft"
+            x={x(picked) - step / 2}
+            width={step}
+            y={pad.t}
+            height={ih}
+          />
+        )}
         <path className="fill-visitors opacity-[0.08]" d={area} />
         {data.map((d, i) =>
           d.revenue ? (
@@ -142,6 +167,26 @@ export function TrendChart({
               rx={2}
             />
           ) : null,
+        )}
+        {usual !== undefined && (
+          <g>
+            <line
+              className="stroke-line-strong"
+              strokeDasharray="4 4"
+              x1={pad.l}
+              x2={width - pad.r}
+              y1={y(usual)}
+              y2={y(usual)}
+            />
+            <text
+              className="fill-muted text-tick"
+              x={width - pad.r}
+              y={y(usual) - 5}
+              textAnchor="end"
+            >
+              usual {compact.format(usual)}
+            </text>
+          </g>
         )}
         {point && (
           <line
@@ -167,6 +212,18 @@ export function TrendChart({
             cx={x(hover ?? 0)}
             cy={y(point.value)}
           />
+        )}
+        {markers.map((i) =>
+          data[i] ? (
+            <circle
+              key={`m${i}`}
+              className="fill-revenue stroke-surface"
+              strokeWidth={2}
+              r={4.5}
+              cx={x(i)}
+              cy={pad.t + ih}
+            />
+          ) : null,
         )}
         {data.map((d, i) =>
           i % every === 0 ? (
@@ -220,6 +277,12 @@ export function TrendChart({
             {metric}
             <span className="ml-auto pl-3 font-medium tabular-nums">{format(point.value)}</span>
           </span>
+          {markerLabel?.(hover) && (
+            <span className="flex items-center gap-2 whitespace-nowrap">
+              <span className="size-2 rounded-full bg-revenue" aria-hidden="true" />
+              {markerLabel(hover)}
+            </span>
+          )}
           {formatRevenue && point.revenue !== undefined && (
             <span className="flex items-center gap-2 whitespace-nowrap">
               <span className="size-2 rounded-full bg-revenue" aria-hidden="true" />

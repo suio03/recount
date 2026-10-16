@@ -93,6 +93,25 @@ export interface Site {
   draftSchedule: 'off' | 'daily' | 'weekly'
   /** Whether a draft's new goals and funnels are added on their own or wait for review. */
   draftApply: 'review' | 'auto'
+  /** Which custom events mean activating and paying; null while they are guessed from names. */
+  keyEvents: KeyEvents | null
+}
+
+/** Custom events by what they mean for the activation and payment figures. */
+export interface KeyEvents {
+  activation: string[]
+  start: string[]
+  paid: string[]
+  failed: string[]
+  closed: string[]
+}
+
+export interface KeyEventsSetup {
+  events: KeyEvents
+  /** Whether `events` were guessed from the names rather than set. */
+  guessed: boolean
+  /** Custom events of the last 90 days. */
+  names: string[]
 }
 
 /** A site's last 24 hours, for the sites list. */
@@ -163,7 +182,7 @@ export interface RevenueSources {
 }
 
 export type SiteChange = Partial<
-  Pick<Site, 'name' | 'timezone' | 'currency' | 'ai' | 'draftSchedule' | 'draftApply'>
+  Pick<Site, 'name' | 'timezone' | 'currency' | 'ai' | 'draftSchedule' | 'draftApply' | 'keyEvents'>
 >
 
 export interface DateRange {
@@ -196,6 +215,62 @@ export interface MainStats {
   interval: Interval
   /** `t` is the bucket in the site's timezone: `YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`. */
   series: Array<{ t: string; visitors: number; pageviews: number; revenue: number }>
+  /** The median day's visitors over the 28 days before the range; null with too little data. */
+  usual?: number | null
+  /** Visitors today so far, when the range reaches today. */
+  today?: number | null
+}
+
+/** What an event means for paying: a key event's kind, or a look at pricing or upgrading. */
+export type PayRole = keyof KeyEvents | 'interest'
+
+export interface TrailEvent {
+  name: string
+  /** Unix milliseconds of the first of `n` in a row. */
+  at: number
+  n: number
+  role?: PayRole
+  /** Whether the name reads as something going wrong. */
+  fault: boolean
+}
+
+export type Ending = 'paid' | 'failed' | 'closed' | 'none'
+
+/** A visitor who tried to pay, as of their first visit in range. */
+export interface PayingVisitor {
+  visitor: string
+  /** Unix milliseconds of their last payment event. */
+  last: number
+  channel: string
+  referrer: string
+  entry: string
+  country: string
+  device: string
+  browser: string
+  visits: number
+  pageviews: number
+  /** Minor units paid in range, from a connected payment provider. */
+  amount: number
+  ending: Ending
+  trail: TrailEvent[]
+}
+
+export interface IntentCounts {
+  activated: number
+  tried: number
+  paid: number
+}
+
+export interface Intent extends Omit<KeyEventsSetup, 'names'> {
+  /** Whether a payment provider is connected, which then counts what was paid. */
+  provider: boolean
+  currency: string
+  totals: IntentCounts
+  previous: IntentCounts
+  /** Buckets in which somebody tried to pay, as in the main series. */
+  series: Array<{ t: string; tried: number }>
+  /** The latest who tried, newest first. */
+  people: PayingVisitor[]
 }
 
 export type Dimension =
@@ -579,6 +654,7 @@ export const api = {
   createFunnel: (siteId: string, input: { name: string; steps: FunnelStep[] }) =>
     send<FunnelDefinition>('POST', `/api/sites/${siteId}/funnels`, input),
   deleteFunnel: (siteId: string, id: string) => del(`/api/sites/${siteId}/funnels/${id}`),
+  keyEvents: (siteId: string) => get<KeyEventsSetup>(`/api/sites/${siteId}/key-events`),
   semantics: (siteId: string) => get<Semantics>(`/api/sites/${siteId}/semantics`),
   agents: (siteId: string) => get<AgentSetup>(`/api/sites/${siteId}/agents`),
   deleteDefinition: (siteId: string, name: string) =>
@@ -618,6 +694,7 @@ export const api = {
   breakdown: (scope: Scope, dimension: Dimension, limit = 8) =>
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),
   goals: (scope: Scope) => get<Goals>(stats(scope, 'goals')),
+  intent: (scope: Scope) => get<Intent>(stats(scope, 'intent')),
   properties: (scope: Scope, event: string) =>
     get<EventProperties>(stats(scope, 'properties', { event })),
   property: (scope: Scope, event: string, key: string, limit = 10) =>

@@ -18,6 +18,7 @@ import { normalizeDomain, validTimezone } from '../domain'
 import { iconResponse } from '../icons/store'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
+import { eventNamesOf, KeyEventsInput, keyEventsOf } from '../stats/intent'
 import { currentVisitors, rows } from '../stats/queries'
 import { agentRoutes } from './agents'
 import { funnelRoutes, goalRoutes } from './goals'
@@ -142,6 +143,8 @@ const SiteChange = z
     ai: z.boolean(),
     draftSchedule: z.enum(['off', 'daily', 'weekly']),
     draftApply: z.enum(['review', 'auto']),
+    /** Null goes back to guessing them from the event names. */
+    keyEvents: KeyEventsInput.nullable(),
   })
   .partial()
 
@@ -160,6 +163,16 @@ adminRoutes.patch('/api/sites/:id', async (c) => {
     ? await db.update(sites).set(parsed.data).where(eq(sites.id, site.id)).returning()
     : [site]
   return updated ? c.json({ ...updated, role: c.get('role') }) : c.json({ error: 'not found' }, 404)
+})
+
+/**
+ * Which custom events mean activating and paying, whether they are guessed from the names, and
+ * the names of the last 90 days to choose from.
+ */
+adminRoutes.get('/api/sites/:id/key-events', async (c) => {
+  const site = c.get('site')
+  const names = await eventNamesOf(site)
+  return c.json({ ...(await keyEventsOf(site, names)), names })
 })
 
 /** Makes a new public link, which retires the old one. */

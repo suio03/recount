@@ -110,6 +110,8 @@ export const sites = pgTable('sites', {
   draftSchedule: text('draft_schedule').$type<DraftSchedule>().notNull().default('off'),
   /** Whether a draft's new goals and funnels are added on their own or wait for a person. */
   draftApply: text('draft_apply').$type<DraftApply>().notNull().default('review'),
+  /** Which custom events mean activating and paying; null while they are guessed from names. */
+  keyEvents: jsonb('key_events').$type<KeyEvents>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -268,6 +270,15 @@ export type EventDefinitionRow = typeof eventDefinitions.$inferSelect
 
 export type DraftSchedule = 'off' | 'daily' | 'weekly'
 export type DraftApply = 'review' | 'auto'
+
+/** Custom events by what they mean for the dashboard's activation and payment figures. */
+export interface KeyEvents {
+  activation: string[]
+  start: string[]
+  paid: string[]
+  failed: string[]
+  closed: string[]
+}
 export type AiKind = 'reading' | 'question' | 'summary' | 'digest' | 'semantics'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect

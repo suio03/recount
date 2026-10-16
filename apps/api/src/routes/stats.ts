@@ -10,6 +10,7 @@ import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
 import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
+import { intentOf } from '../stats/intent'
 import { propertiesOf, propertyOf } from '../stats/properties'
 import {
   funnelOf,
@@ -22,7 +23,8 @@ import {
   sessions,
   totalsOf,
 } from '../stats/queries'
-import { intervalOf, previousRange, RangeQuery } from '../stats/range'
+import { intervalOf, isOpen, previousRange, RangeQuery } from '../stats/range'
+import { usualVisitors } from '../stats/usual'
 
 /** Mounted under /api/sites/:id/stats, after the site and the caller's access are checked. */
 type StatsEnv = { Variables: { scope: Scope; site: Site; role?: Role } }
@@ -50,6 +52,8 @@ statsRoutes.use('*', async (c, next) => {
  * Headline numbers for the range and the period before it, plus a series bucketed by
  * `interval`: minutes for the realtime view, hours for one day, months past a quarter, days
  * otherwise. Sessions count in the bucket they started in. Revenue is in minor units of `currency`.
+ * Outside the realtime view it also carries `usual`, the median day's visitors over the 28 days
+ * before the range, and `today`, today's visitors so far when the range reaches today.
  */
 statsRoutes.get('/main', async (c) => {
   const scope = c.get('scope')
@@ -57,23 +61,29 @@ statsRoutes.get('/main', async (c) => {
   const interval = intervalOf(scope.range)
   const s = sessions(scope)
   const p = payments(scope)
-  const [totals, previous, revenue, previousRevenue, counts, paid] = await Promise.all([
-    totalsOf(scope, scope.range),
-    totalsOf(scope, before),
-    revenueOf(scope, scope.range),
-    revenueOf(scope, before),
-    rows<{ t: string; visitors: number; pageviews: number }>(
-      `SELECT ${bucketSql(interval, 'started')} AS t, uniqExact(visitor_id) AS visitors,
+  const realtime = scope.range.since !== undefined
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: scope.site.timezone })
+  const open = !realtime && isOpen(scope.range, scope.site.timezone)
+  const [totals, previous, revenue, previousRevenue, counts, paid, usual, todays] =
+    await Promise.all([
+      totalsOf(scope, scope.range),
+      totalsOf(scope, before),
+      revenueOf(scope, scope.range),
+      revenueOf(scope, before),
+      rows<{ t: string; visitors: number; pageviews: number }>(
+        `SELECT ${bucketSql(interval, 'started')} AS t, uniqExact(visitor_id) AS visitors,
               sum(session_pageviews) AS pageviews
        FROM (${s.sql}) GROUP BY t`,
-      s.params,
-    ),
-    rows<{ t: string; revenue: number }>(
-      `SELECT ${bucketSql(interval, 'timestamp')} AS t, sum(amount) AS revenue
+        s.params,
+      ),
+      rows<{ t: string; revenue: number }>(
+        `SELECT ${bucketSql(interval, 'timestamp')} AS t, sum(amount) AS revenue
        FROM (${p.sql}) GROUP BY t`,
-      p.params,
-    ),
-  ])
+        p.params,
+      ),
+      realtime ? null : usualVisitors(scope),
+      open ? totalsOf(scope, { from: today, to: today }).then((t) => t.visitors) : null,
+    ])
   const byBucket = new Map(counts.map((d) => [d.t, d]))
   const revenueByBucket = new Map(paid.map((d) => [d.t, d.revenue]))
   return c.json({
@@ -81,6 +91,8 @@ statsRoutes.get('/main', async (c) => {
     interval,
     totals: { ...totals, ...revenue },
     previous: { ...previous, ...previousRevenue },
+    usual,
+    today: todays === null ? null : Number(todays),
     series: bucketsOf(scope.range, scope.site.timezone).map((t) => ({
       t,
       visitors: byBucket.get(t)?.visitors ?? 0,
@@ -211,6 +223,16 @@ statsRoutes.get('/funnel', async (c) => {
       previous_visitors: before[i] ?? 0,
     })),
   })
+})
+
+/**
+ * Who tried to pay: activation and payment counts for this range and the one before, the
+ * buckets holding a try, and the latest people who tried, each with their events in order.
+ */
+statsRoutes.get('/intent', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  return c.json(await intentOf(scope))
 })
 
 /**

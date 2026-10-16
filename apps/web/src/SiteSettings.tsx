@@ -5,6 +5,7 @@ import { AgentSettings } from './AgentSettings'
 import { api, type Me, type RevenueSource, type Site, type SiteChange } from './api'
 import { DraftSettings } from './DraftSettings'
 import { FunnelSettings, GoalSettings } from './GoalSettings'
+import { KeyEventsSettings } from './KeyEventsSettings'
 import { Button, ConfirmButton, CopyBox, ErrorText, Field, inputClass } from './ui/Form'
 import { Panel } from './ui/Panel'
 import { SegmentedControl } from './ui/SegmentedControl'
@@ -126,6 +127,7 @@ export function SiteSettings({ site, onDeleted }: { site: Site; onDeleted: () =>
       <AgentSettings key={`agents-${site.id}`} site={site} />
       <GoalSettings key={`goals-${site.id}`} site={site} />
       <FunnelSettings key={`funnels-${site.id}`} site={site} />
+      <KeyEventsSettings key={`key-events-${site.id}`} site={site} />
       <Revenue key={`revenue-${site.id}`} site={site} />
       <PublicLink site={site} />
       <DeleteSite site={site} onDeleted={onDeleted} />
@@ -421,7 +423,7 @@ function Revenue({ site }: { site: Site }) {
   const list = sources.data?.sources ?? []
   const stored = list.find((s) => s.keyHint !== null)
   return (
-    <Panel title="Revenue">
+    <Panel title="Revenue" id="revenue">
       <p className="m-0 text-body text-muted">
         Payments from Paddle are synced every 15 minutes and credited to the visitor who paid. Put{' '}
         <code className="font-mono text-path">recount.ids()</code> in the checkout&apos;s{' '}

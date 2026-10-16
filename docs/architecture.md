@@ -144,14 +144,53 @@ Next:
    read with the catalog, `/llms.txt`, the stateless MCP server at `/mcp` with those tools and
    `answer_question`, and a Coding agents panel in site settings. Still to do: a coding agent's
    full run on a real site, and editing definitions in the dashboard.
-2. **Visitor journeys** (planned 2026-10-15): one visitor's visits in order, each as its pages,
+2. **Data-first dashboard** (planned 2026-10-16; design: board "scribix.io — data first" in the
+   Recount Redesign canvas). The dashboard is still a Plausible layout: KPIs, a chart, then
+   tables the owner reads to answer two daily questions: did something break, and did anyone
+   try to pay. The site page becomes one page, in this order: an on-click brief, traffic, the
+   people who tried to pay, paths with events that went quiet, an ask box, then links to the
+   reports. There is no separate "brief mode". Every number still comes from a query.
+   - **Traffic.** Four totals:
+     - visitors, against the previous period
+     - today so far, against a usual day: the median daily visitors over the 28 days before the range
+     - signed in: the site's activation event
+     - tried to pay → paid
+     Below them is the daily chart for 30 days with the usual line. A dot marks the days someone tried to pay; clicking a day lists that day's counts. Sources sit beside the chart, with the paths to payment noted on their rows. `main` gains `usual`. The markers come from code, so opening the page makes no model call.
+   - **Tried to pay.** One card for each visitor in range who sent a pay-intent event, newest first, at most 20:
+     - country, device and browser, source, entry page, day
+     - their events in time order, with pay events in orange and failures in red
+     - how it ended: paid, failed, closed, or nothing after
+     Which events mean "started paying", "paid" and "failed" is a per-site setting. The semantics draft proposes it, and site settings correct it. Without a draft, code proposes events whose names contain checkout, upgrade, pricing, paywall or subscribe, and failure events whose names contain fail, error, closed or dismissed. "Paid" comes from a connected provider's payments when there is one, else from the paid event. Built as `GET /stats/intent` on the per-visitor event query that visitor journeys (next item) also uses, so "Full journey" opens the journey.
+   - **Paths.** These replace the Goal Conversions table and the funnel panel. Each lane is a funnel of up to 5 steps:
+     - per step: the visitors who did it, last period's count in grey, and the share kept from the previous step
+     - per lane: its side events (dismissals, failures) with their counts
+     The steps are ordered per visitor within the range, not within one visit, because people sign in on one visit and pay on another. In cookieless mode this collapses to one day. Lanes come from the site's funnels, then from the drafted ones. The draft prompt asks for up to 4 lanes covering the main flows, one of them ending at payment, plus each lane's side events. When AI is off and no funnel is defined, the section falls back to the event list, with a prompt to add funnels or turn on AI.
+   - **Went quiet.** Code-detected, no model involved: an event that fired on at least 10 of the 14 days before the range, at 2 or more a day on average, and has been 0 for 2 or more full days. Each row shows the event, one sentence written by code, and its last 7 days. It sits under the paths because a broken tag looks the same as a broken feature.
+   - **Brief.** This replaces the reading panel. It is written only when someone clicks "Write this week's brief", never on open. It needs the AI switch, the budget, and admin or above. It is cached per site and range, and shown to everyone until it is rewritten. Its inputs are the detected changes plus the three sections above. It writes 3–6 lines, each marked Fact or Guess and each linking to its section with the filters that show it. Today's automatic reading and its chart annotations go away: the chart markers come from code, and replay summaries and semantics drafts keep their own schedules.
+   - **Why?** A button on each lane and each card, answered on click and cached. The model gets that lane's or that visitor's counts, plus the property values of its failure events (for example `error_code`), and answers in Fact and Guess lines.
+   - **Ask.** A free question. It needs a model loop over read-only query tools, the same ones MCP exposes, so a question's numbers come from queries too. Built last.
+   - **Reports.** The existing panels (breakdowns, goals, funnels, event properties, sessions) move unchanged to a Reports view linked at the bottom. Filters set anywhere apply to the whole page.
+   - **All sites.** After the site page, the sites list shows every site's 30-day visitors with its usual line, tried-to-pay and paid counts this week, and its quiet events, sorted with the sites that need a look first.
+   - Order:
+     1. traffic and tried-to-pay, since that is the daily habit (built: `/stats/intent`, per-site `key_events` in migration 0015, the Key events settings panel)
+     2. paths and went quiet
+     3. the on-click brief, removing the automatic reading
+     4. Why?
+     5. all sites
+     6. Ask
+3. **Payment providers**: Stripe, Lemon Squeezy and Creem next to Paddle, each connected in site settings with a read-only key sealed under `ENCRYPTION_KEY`. Each is synced on the schedule Paddle uses into the same `payments` table, refunds included, and joined to the visitor by `recount_vid` and `recount_sid` in checkout metadata:
+   - Stripe: `metadata` on the Checkout Session or PaymentIntent
+   - Lemon Squeezy: `checkout_data.custom`
+   - Creem: `metadata`
+   `syncSource` dispatches on `provider` instead of refusing anything but Paddle. The tracking rules and the Coding agents panel say how to pass the ids for each provider. Once a provider is connected, "paid" on the dashboard comes from it rather than from events.
+4. **Visitor journeys** (planned 2026-10-15): one visitor's visits in order, each as its pages,
    clicks and custom events with their properties and times, opened from any breakdown row,
    goal or funnel step to see the people behind a number. Works for every visitor, not only
    recorded sessions, since it reads events; recordings, where they exist, link from the visit.
    Needs cookie mode to join visits; in cookieless mode it shows one day.
-3. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
+5. **Hosted service**: email sending, sign-up, plans and Paddle billing, limits, account deletion, landing page,
    docs site, privacy policy and DPA.
-4. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
+6. **Search data from Google Search Console and Bing Webmaster** (planned 2026-10-15): clicks,
    impressions, CTR and position for the queries and landing pages behind organic search, joined
    to Recount by landing page so a query's ranking sits next to what its visitors did afterwards.
    - Google: the Search Analytics API, read with the `webmasters.readonly` scope. Each day is
@@ -179,11 +218,11 @@ Next:
      connecting in the dashboard and the Search panel; then publishing the hosted OAuth app,
      which needs the privacy policy and home page from the hosted service; Bing last. It comes
      after the hosted service because Google keeps 16 months, so waiting loses no data.
-5. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
-6. **Attribution**: first touch next to last non-direct touch; Creem sync.
-7. **Digests**: periodic email digests.
-8. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
-9. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
+7. **Geo database**: DB-IP Lite for country, region and city without Cloudflare.
+8. **Attribution**: first touch next to last non-direct touch.
+9. **Digests**: periodic email digests.
+10. **AI crawlers**: Cloudflare Worker reporting to `ai_crawls`, IP verification.
+11. **A/B tests**: a variant reported by the site's own split, compared by code on the drafted
    conversion with confidence intervals, explained by the model.
 
 ## Known gaps in the skeleton

@@ -23,6 +23,8 @@ import { type Period, resolve } from './dashboard/period'
 import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
 import { fromSearch, toSearch } from './dashboard/search'
+import { Traffic } from './dashboard/Traffic'
+import { TriedToPay } from './dashboard/TriedToPay'
 import { Settings } from './Settings'
 import { AcceptInvite, SignIn } from './SignIn'
 import { NewSite, SiteSettings } from './SiteSettings'
@@ -224,6 +226,7 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
             <Dashboard
               key={site.id}
               site={site}
+              onShowDay={(day) => state.setPeriod({ preset: 'custom', from: day, to: day })}
               range={range}
               realtime={realtime}
               filters={state.filters}
@@ -523,8 +526,9 @@ function Dashboard({
   filters,
   onFilter,
   onShow,
+  onShowDay,
 }: {
-  site: Pick<Site, 'id' | 'timezone' | 'ai' | 'role'>
+  site: Pick<Site, 'id' | 'timezone' | 'ai' | 'role'> & { domain?: string }
   /** A public link's token: only the panels the link may show. */
   share?: string
   range: DateRange
@@ -533,6 +537,8 @@ function Dashboard({
   filters: Filters
   onFilter: (key: FilterKey, value: string) => void
   onShow: (filters: Filters) => void
+  /** Narrows the dashboard to one day; the shared dashboard has no day view. */
+  onShowDay?: (day: string) => void
 }) {
   const { from, to, since } = range
   const scope = useMemo<Scope>(
@@ -540,16 +546,38 @@ function Dashboard({
     [site.id, share, from, to, since, filters],
   )
   const props = { scope, onFilter: (d: Dimension, value: string) => onFilter(d, value) }
+  // The people who tried to pay are private to the team, and the realtime view has none.
+  const full = !realtime && !share
+  const intent = useQuery({
+    queryKey: ['intent', scope],
+    queryFn: () => api.intent(scope),
+    placeholderData: (prev) => prev,
+    enabled: full,
+  })
 
   return (
     <>
-      {realtime || share ? (
-        <Overview scope={scope} />
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-          <Overview scope={scope} />
-          {/* The overview sets the row height; a longer reading scrolls inside it. */}
-          <div className="relative min-h-0">
+      {full ? (
+        <>
+          <Traffic
+            scope={scope}
+            timezone={site.timezone}
+            intent={intent.data}
+            onFilter={props.onFilter}
+            onShowDay={(day) => onShowDay?.(day)}
+          />
+          {intent.isError ? (
+            <p className="text-muted">Could not load who tried to pay: {String(intent.error)}</p>
+          ) : (
+            <TriedToPay
+              intent={intent.data}
+              domain={site.domain}
+              timezone={site.timezone}
+              canEdit={site.role !== 'viewer'}
+            />
+          )}
+          {/* Until the brief replaces it, the reading keeps its own scrolling box. */}
+          <div className="relative min-h-0 lg:h-[440px]">
             <ReadingPanel
               site={site}
               scope={scope}
@@ -557,7 +585,9 @@ function Dashboard({
               onShow={onShow}
             />
           </div>
-        </div>
+        </>
+      ) : (
+        <Overview scope={scope} />
       )}
       {site.ai && !realtime && (
         <SessionsPanel scope={scope} timezone={site.timezone} canRefresh={site.role !== 'viewer'} />
