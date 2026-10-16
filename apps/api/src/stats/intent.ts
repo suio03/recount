@@ -80,6 +80,8 @@ const GAVE_UP = new Set([
   'exit',
 ])
 const INTEREST = new Set(['upgrade', 'pricing', 'paywall', 'premium'])
+/** Payment words that alone also name browsing plans, so `pricing_billing_cycle_view` is interest. */
+const WEAK_PAY = new Set(['billing', 'invoice'])
 const SIGN_IN = ['signin', 'signup', 'login', 'register', 'registered', 'registration']
 
 /** Whether a name reads as something going wrong, payment or not. */
@@ -89,7 +91,8 @@ export const isFault = (name: string) => words(name).some((w) => FAULT.has(w))
 export function guessRole(name: string): Role | undefined {
   const w = words(name)
   const joined = w.join('')
-  if (w.some((x) => PAY.has(x))) {
+  const browsing = w.some((x) => INTEREST.has(x)) && w.every((x) => !PAY.has(x) || WEAK_PAY.has(x))
+  if (!browsing && w.some((x) => PAY.has(x))) {
     if (w.some((x) => FAULT.has(x))) return 'failed'
     if (w.some((x) => GAVE_UP.has(x))) return 'closed'
     if (
@@ -147,11 +150,13 @@ export async function keyEventsOf(
 export type Ending = 'paid' | 'failed' | 'closed' | 'none'
 
 /**
- * How a visitor's try ended: paid if they paid at all, otherwise what their last payment event
- * says, and `none` when it was a start with nothing after.
+ * How a visitor's try ended: paid if they paid at all, failed if any payment failed even when
+ * they tried again, otherwise what their last payment event says, and `none` when it was a
+ * start with nothing after.
  */
 export function endingOf(roles: Array<Role | undefined>, paid: boolean): Ending {
   if (paid || roles.includes('paid')) return 'paid'
+  if (roles.includes('failed')) return 'failed'
   const last = roles.filter((r) => r === 'start' || r === 'failed' || r === 'closed').at(-1)
   return last === 'failed' || last === 'closed' ? last : 'none'
 }

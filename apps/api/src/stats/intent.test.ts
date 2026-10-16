@@ -18,6 +18,10 @@ describe('guessRole', () => {
     expect(guessRole('book_plan_start')).toBeUndefined()
     expect(guessRole('book_paywall_view')).toBe('interest')
     expect(guessRole('upgrade_cta_click')).toBe('interest')
+    expect(guessRole('pricing_billing_cycle_view')).toBe('interest')
+    expect(guessRole('pricing_billing_cycle_change')).toBe('interest')
+    expect(guessRole('pricing_checkout_click')).toBe('start')
+    expect(guessRole('billing_failed')).toBe('failed')
   })
 
   it('reads sign-ins as activation, not their failures', () => {
@@ -44,7 +48,8 @@ describe('endingOf', () => {
   it('says how a try ended', () => {
     expect(endingOf(['start', 'failed'], false)).toBe('failed')
     expect(endingOf(['start', 'closed'], false)).toBe('closed')
-    expect(endingOf(['failed', 'start', undefined], false)).toBe('none')
+    expect(endingOf(['failed', 'start', undefined], false)).toBe('failed')
+    expect(endingOf(['start', undefined], false)).toBe('none')
     expect(endingOf(['start', 'failed', 'paid'], false)).toBe('paid')
     expect(endingOf(['start'], true)).toBe('paid')
   })

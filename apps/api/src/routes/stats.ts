@@ -12,7 +12,7 @@ import { replaysFor } from '../replay/list'
 import { breakdownOf, DIMENSIONS } from '../stats/breakdown'
 import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters } from '../stats/filters'
-import { intentOf } from '../stats/intent'
+import { intentOf, isFault } from '../stats/intent'
 import { pathsFor } from '../stats/lanes'
 import { visitorFunnelOf } from '../stats/paths'
 import { propertiesOf, propertyOf } from '../stats/properties'
@@ -136,7 +136,11 @@ statsRoutes.get('/goals', async (c) => {
   ])
   const previous = new Map(before.map((g) => [g.name, g.visitors]))
   return c.json({
-    goals: current.map((g) => ({ ...g, previous_visitors: previous.get(g.name) ?? 0 })),
+    goals: current.map((g) => ({
+      ...g,
+      previous_visitors: previous.get(g.name) ?? 0,
+      fault: isFault(g.name),
+    })),
   })
 })
 

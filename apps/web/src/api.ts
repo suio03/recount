@@ -428,6 +428,8 @@ export interface Goals {
     visitors: number
     events: number
     previous_visitors: number
+    /** Whether the name reads as something going wrong, so fewer is better. */
+    fault: boolean
   }>
 }
 

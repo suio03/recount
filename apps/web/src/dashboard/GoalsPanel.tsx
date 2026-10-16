@@ -122,7 +122,7 @@ export function GoalsPanel({
                       {delta === undefined ? (
                         <span className="text-label text-muted">—</span>
                       ) : (
-                        <Delta value={delta} />
+                        <Delta value={delta} higherIsBetter={!g.fault} />
                       )}
                     </td>
                   </tr>
