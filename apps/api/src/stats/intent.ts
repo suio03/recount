@@ -225,6 +225,31 @@ async function payersOf(scope: Scope, range: DateRange) {
   )
 }
 
+/** Whether a payment provider is connected, so payments count from it rather than events. */
+export async function hasProvider(site: Pick<Site, 'id'>) {
+  const sources = await db
+    .select({ id: revenueSources.id })
+    .from(revenueSources)
+    .where(eq(revenueSources.siteId, site.id))
+  return sources.length > 0
+}
+
+/** Visitors who tried to pay and paid in the range and the one before, as the dashboard counts. */
+export async function triesOf(scope: Scope) {
+  const [{ events }, provider] = await Promise.all([
+    keyEventsOf(scope.site),
+    hasProvider(scope.site),
+  ])
+  const known =
+    events.start.length + events.failed.length + events.closed.length + events.paid.length
+  if (!known) return null
+  const [now, before] = await Promise.all([
+    countsOf(scope, scope.range, events, provider),
+    countsOf(scope, previousRange(scope.range), events, provider),
+  ])
+  return { now, before }
+}
+
 /** How many visitors activated, tried to pay and paid in a range. */
 async function countsOf(scope: Scope, range: DateRange, events: KeyEvents, provider: boolean) {
   const e = eventsIn(scope, range)
@@ -266,14 +291,7 @@ async function countsOf(scope: Scope, range: DateRange, events: KeyEvents, provi
  */
 export async function intentOf(scope: Scope) {
   const { site, range } = scope
-  const [{ events, guessed }, sources] = await Promise.all([
-    keyEventsOf(site),
-    db
-      .select({ id: revenueSources.id })
-      .from(revenueSources)
-      .where(eq(revenueSources.siteId, site.id)),
-  ])
-  const provider = sources.length > 0
+  const [{ events, guessed }, provider] = await Promise.all([keyEventsOf(site), hasProvider(site)])
   const tries = [...events.start, ...events.failed, ...events.closed, ...events.paid]
   const e = eventsIn(scope, range)
   const payers = provider ? await payersOf(scope, range) : []

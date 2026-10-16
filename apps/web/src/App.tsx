@@ -184,7 +184,7 @@ function SignedIn({ me, view }: { me: Me; view: View }) {
             <>
               <PageTitle
                 title="Sites"
-                detail="Visitors in the last 24 hours, against the 24 before"
+                detail="The last 30 days against a usual day, who tried to pay this week, and what needs a look"
               />
               <SitesList
                 sites={sites.data}

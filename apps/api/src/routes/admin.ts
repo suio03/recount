@@ -18,6 +18,7 @@ import { normalizeDomain, validTimezone } from '../domain'
 import { iconResponse } from '../icons/store'
 import { playable, recordingOf } from '../replay/sessions'
 import { forgetDomain } from '../sites'
+import { activityOf, byUrgency } from '../stats/activity'
 import { eventNamesOf, KeyEventsInput, keyEventsOf } from '../stats/intent'
 import { currentVisitors, rows } from '../stats/queries'
 import { agentRoutes } from './agents'
@@ -216,18 +217,16 @@ adminRoutes.delete('/api/sites/:id', async (c) => {
   return c.json({ ok: true })
 })
 
-/** Hours in the sites list's trend. */
-const ACTIVITY_HOURS = 24
-
 /**
- * The last 24 hours of every site the caller can see, for the sites list: visitors, visitors in
- * the 24 hours before, and visitors per hour, oldest first.
+ * Every site the caller can see at a glance, for the sites list: its last 30 days against a usual
+ * day, who tried to pay this week, its quiet events and what needs a look, sorted with the sites
+ * that need a look first.
  */
 adminRoutes.get('/api/activity', async (c) => {
   const orgs = await orgsOf(c.get('principal'))
   const visible = orgs.length
     ? await db
-        .select({ id: sites.id })
+        .select()
         .from(sites)
         .where(
           inArray(
@@ -236,44 +235,8 @@ adminRoutes.get('/api/activity', async (c) => {
           ),
         )
     : []
-  if (!visible.length) return c.json([])
-  const params = { ids: visible.map((s) => s.id), hours: ACTIVITY_HOURS }
-  const window = `site_id IN {ids:Array(UUID)} AND timestamp <= now()`
-  const [totals, hourly] = await Promise.all([
-    rows<{ site: string; visitors: number; previous: number }>(
-      `SELECT toString(site_id) AS site,
-              uniqExactIf(visitor_id, timestamp > now() - INTERVAL {hours:UInt16} HOUR) AS visitors,
-              uniqExactIf(visitor_id, timestamp <= now() - INTERVAL {hours:UInt16} HOUR) AS previous
-       FROM events WHERE ${window} AND timestamp > now() - INTERVAL {hours:UInt16} * 2 HOUR
-       GROUP BY site_id`,
-      params,
-    ),
-    rows<{ site: string; ago: number; visitors: number }>(
-      `SELECT toString(site_id) AS site,
-              dateDiff('hour', toStartOfHour(timestamp), toStartOfHour(now())) AS ago,
-              uniqExact(visitor_id) AS visitors
-       FROM events
-       WHERE ${window} AND timestamp >= toStartOfHour(now()) - INTERVAL {hours:UInt16} - 1 HOUR
-       GROUP BY site_id, ago`,
-      params,
-    ),
-  ])
-  const bySite = new Map(totals.map((t) => [t.site, t]))
-  return c.json(
-    visible.map(({ id }) => {
-      const series = Array.from({ length: ACTIVITY_HOURS }, () => 0)
-      for (const h of hourly)
-        if (h.site === id && h.ago < ACTIVITY_HOURS)
-          series[ACTIVITY_HOURS - 1 - Number(h.ago)] = Number(h.visitors)
-      const total = bySite.get(id)
-      return {
-        siteId: id,
-        visitors: Number(total?.visitors ?? 0),
-        previous: Number(total?.previous ?? 0),
-        series,
-      }
-    }),
-  )
+  const all = await Promise.all(visible.map(activityOf))
+  return c.json(all.sort(byUrgency))
 })
 
 /** A site's or referrer's icon, fetched from the host once and stored. */

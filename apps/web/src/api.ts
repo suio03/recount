@@ -114,14 +114,28 @@ export interface KeyEventsSetup {
   names: string[]
 }
 
-/** A site's last 24 hours, for the sites list. */
+/** Something on a site that needs a look, as the sites list flags it. */
+export type Attention =
+  | { kind: 'silent' }
+  | { kind: 'drop'; yesterday: number; usual: number }
+  | { kind: 'spike'; yesterday: number; usual: number }
+  | { kind: 'quiet'; events: number }
+  | { kind: 'unpaid'; tried: number; paid: number }
+
+/** A site at a glance, for the sites list. The list comes sorted, sites that need a look first. */
 export interface SiteActivity {
   siteId: string
-  visitors: number
-  /** Visitors in the 24 hours before. */
-  previous: number
-  /** Visitors per hour, oldest first. */
-  series: number[]
+  /** Visitors per day in the site's timezone over 30 days, oldest first, ending today so far. */
+  days: Array<{ day: string; visitors: number }>
+  /** A usual day: the median over the 28 days before this week. */
+  usual: number | null
+  /** This week (the last 7 days with today) and the 7 before. */
+  week: { visitors: number; previous: number }
+  /** Who tried to pay and paid this week and the week before; null without payment events. */
+  tries: { tried: number; paid: number; triedBefore: number; paidBefore: number } | null
+  quiet: Array<{ name: string; days: number }>
+  /** What needs a look, most pressing first. */
+  attention: Attention[]
 }
 
 /**

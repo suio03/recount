@@ -3,11 +3,11 @@ import { eq } from 'drizzle-orm'
 import { AiUnavailable, structured } from '../ai/claude'
 import { type Fact, factLines, Output, vettedLines } from '../brief/facts'
 import { db } from '../db/postgres'
-import { readings, revenueSources } from '../db/schema'
+import { readings } from '../db/schema'
 import { env } from '../env'
 import { shortDay } from '../reading/format'
 import { semanticsOf } from '../semantics/store'
-import { compress, endingOf, keyEventsOf } from '../stats/intent'
+import { compress, endingOf, hasProvider, keyEventsOf } from '../stats/intent'
 import { laneDefinitionsOf } from '../stats/lanes'
 import { lanesOf, MAX_STEPS, sideNames } from '../stats/paths'
 import type { Scope } from '../stats/queries'
@@ -161,14 +161,11 @@ async function laneFactsOf(scope: Scope, name: string): Promise<Fact[]> {
 
 async function visitorFactsOf(scope: Scope, visitor: string): Promise<Fact[]> {
   const { site, range } = scope
-  const [{ events: key }, { events, profile }, paid, sources] = await Promise.all([
+  const [{ events: key }, { events, profile }, paid, provider] = await Promise.all([
     keyEventsOf(site),
     visitorOf(scope, visitor),
     paidBy(scope, visitor),
-    db
-      .select({ id: revenueSources.id })
-      .from(revenueSources)
-      .where(eq(revenueSources.siteId, site.id)),
+    hasProvider(site),
   ])
   if (!events.length) throw new WhyMissing('this visitor has no events in this range')
   const custom = events.filter((e) => e.name !== 'pageview' && e.name !== 'click')
@@ -179,7 +176,7 @@ async function visitorFactsOf(scope: Scope, visitor: string): Promise<Fact[]> {
   )
   const ending = endingOf(
     trail.map((t) => t.role),
-    sources.length > 0 && paid.payments > 0,
+    provider && paid.payments > 0,
   )
   const faults = [
     ...new Set(

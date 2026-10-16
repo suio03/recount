@@ -1,18 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Search, SlidersHorizontal } from 'lucide-react'
+import {
+  BellOff,
+  CreditCard,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  TrendingDown,
+  TrendingUp,
+  Unplug,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type Site, type SiteActivity } from './api'
+import { type Attention, api, type Site, type SiteActivity } from './api'
 import { cx } from './ui/cx'
 import { change, Delta } from './ui/Delta'
 import { Button, inputClass } from './ui/Form'
 import { HostIcon } from './ui/HostIcon'
 
 /** Refetched this often while the list is open. */
-const ACTIVITY_REFRESH_MS = 60_000
+const ACTIVITY_REFRESH_MS = 5 * 60_000
 
 /**
- * Every site the person can see, each with its last 24 hours: visitors, the change from the 24
- * hours before, and visitors per hour. Opening one shows its dashboard.
+ * Every site the person can see at a glance: its last 30 days against a usual day, this week's
+ * visitors, who tried to pay and what needs a look, with the sites that need a look first.
+ * Opening one shows its dashboard.
  */
 export function SitesList({
   sites,
@@ -47,9 +57,12 @@ export function SitesList({
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const needle = query.trim().toLowerCase()
-  const shown = sites.filter(
-    (s) => !needle || s.domain.includes(needle) || s.name.toLowerCase().includes(needle),
-  )
+  // The server sorts by what needs a look; sites it has not counted yet keep their place after.
+  const order = useMemo(() => new Map(activity.data?.map((a, i) => [a.siteId, i])), [activity.data])
+  const shown = sites
+    .filter((s) => !needle || s.domain.includes(needle) || s.name.toLowerCase().includes(needle))
+    .sort((a, b) => (order.get(a.id) ?? order.size) - (order.get(b.id) ?? order.size))
+  const flagged = activity.data?.filter((a) => a.attention.some((x) => x.kind !== 'spike')).length
 
   return (
     <div className="grid gap-4">
@@ -78,6 +91,13 @@ export function SitesList({
           </Button>
         )}
       </div>
+      {flagged !== undefined && sites.length > 1 && (
+        <p className="m-0 text-label text-muted">
+          {flagged
+            ? `${flagged} of ${sites.length} sites need a look.`
+            : `Nothing needs a look across ${sites.length} sites.`}
+        </p>
+      )}
       {shown.length === 0 ? (
         <p className="py-10 text-center text-muted">No site matches “{query.trim()}”.</p>
       ) : (
@@ -111,9 +131,12 @@ function SiteCard({
   onOpen: () => void
   onSettings?: () => void
 }) {
-  const delta = activity && change(activity.visitors, activity.previous)
+  const delta = activity && change(activity.week.visitors, activity.week.previous)
+  const today = activity?.days.at(-1)?.visitors
+  const tries = activity?.tries
+  const flags = activity?.attention.filter((a) => a.kind !== 'unpaid') ?? []
   return (
-    <li className="group relative grid gap-3 rounded-md border border-line bg-surface p-4 hover:border-line-strong">
+    <li className="group relative grid content-start gap-3 rounded-md border border-line bg-surface p-4 hover:border-line-strong">
       <div className="flex min-w-0 items-center gap-2.5 pr-8">
         <HostIcon host={site.domain} className="size-5" />
         {/* The whole card opens the dashboard; the button covers it from underneath. */}
@@ -137,16 +160,83 @@ function SiteCard({
           <SlidersHorizontal className="size-4" strokeWidth={1.75} />
         </button>
       )}
-      <Sparkline values={activity?.series} loading={loading} />
-      <div className="flex items-baseline justify-between gap-2 text-body">
-        <span className="text-muted">
-          <span className="font-semibold text-ink tabular-nums">
-            {activity ? compact(activity.visitors) : '–'}
-          </span>{' '}
-          visitors in last 24h
-        </span>
-        {delta !== undefined && <Delta value={delta} />}
+      {/* People who tried to pay without paying show in the line at the foot of the card. */}
+      {flags.length > 0 && (
+        <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+          {flags.map((a) => (
+            <Flag key={a.kind} attention={a} quiet={activity?.quiet ?? []} />
+          ))}
+        </ul>
+      )}
+      <Sparkline days={activity?.days} usual={activity?.usual ?? null} loading={loading} />
+      <div className="grid gap-1">
+        <div className="flex items-baseline justify-between gap-2 text-body">
+          <span className="text-muted">
+            <span className="font-semibold text-ink tabular-nums">
+              {activity ? compact(activity.week.visitors) : '–'}
+            </span>{' '}
+            visitors this week
+          </span>
+          {delta !== undefined && <Delta value={delta} />}
+        </div>
+        {activity && (
+          <p className="m-0 text-label text-muted tabular-nums">
+            Today so far {compact(today ?? 0)}
+            {activity.usual !== null && ` · usual day ≈ ${compact(activity.usual)}`}
+          </p>
+        )}
       </div>
+      {tries && (
+        <p className="m-0 flex items-center gap-1.5 border-t border-line pt-2.5 text-label text-muted">
+          <CreditCard
+            className={cx('size-3.5', tries.tried ? 'text-revenue' : 'text-muted')}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
+          {tries.tried ? (
+            <span className={cx(tries.tried > tries.paid && 'text-revenue')}>
+              <span className="font-semibold text-ink tabular-nums">{tries.tried}</span> tried to
+              pay this week ·{' '}
+              <span className="font-semibold text-ink tabular-nums">{tries.paid}</span> paid
+            </span>
+          ) : (
+            'Nobody tried to pay this week'
+          )}
+        </p>
+      )}
+    </li>
+  )
+}
+
+/** One thing that needs a look, as a small pill on the card. */
+function Flag({ attention: a, quiet }: { attention: Attention; quiet: SiteActivity['quiet'] }) {
+  const [Icon, text, tone, title] =
+    a.kind === 'silent'
+      ? [Unplug, 'No visitors since yesterday', 'bad', 'Is the tracking script still on the site?']
+      : a.kind === 'drop'
+        ? [TrendingDown, `Yesterday ${compact(a.yesterday)}, usual ≈ ${compact(a.usual)}`, 'bad']
+        : a.kind === 'spike'
+          ? [TrendingUp, `Yesterday ${compact(a.yesterday)}, usual ≈ ${compact(a.usual)}`, 'up']
+          : a.kind === 'quiet'
+            ? [
+                BellOff,
+                a.events === 1 ? `${quiet[0]?.name} went quiet` : `${a.events} events went quiet`,
+                'bad',
+                quiet.map((q) => `${q.name}: ${q.days}d`).join(', '),
+              ]
+            : [CreditCard, `${a.tried} tried, ${a.paid} paid`, 'revenue']
+  return (
+    <li
+      title={title}
+      className={cx(
+        'inline-flex max-w-full items-center gap-1 rounded-xs px-1.5 py-0.5 text-label font-medium',
+        tone === 'bad' && 'bg-down/10 text-down',
+        tone === 'up' && 'bg-up/10 text-up',
+        tone === 'revenue' && 'bg-revenue-soft text-revenue',
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+      <span className="truncate">{text}</span>
     </li>
   )
 }
@@ -159,37 +249,73 @@ const compact = (n: number) =>
 const WIDTH = 240
 const HEIGHT = 40
 
-/** Visitors per hour as a line over a soft fill, scaled to its own peak. */
-function Sparkline({ values, loading }: { values?: number[]; loading: boolean }) {
-  if (!values)
+/**
+ * Visitors per day as a line over a soft fill, with a usual day dashed across. Scaled to the
+ * higher of the peak and the usual day; today, still under way, ends on a dot.
+ */
+function Sparkline({
+  days,
+  usual,
+  loading,
+}: {
+  days?: SiteActivity['days']
+  usual: number | null
+  loading: boolean
+}) {
+  if (!days)
     return (
       <div
         className={cx('h-10 rounded-xs bg-sunken/40', loading && 'animate-pulse')}
         aria-hidden="true"
       />
     )
-  const max = Math.max(1, ...values)
+  const values = days.map((d) => d.visitors)
+  const peak = Math.max(...values)
+  const max = Math.max(1, peak, usual ?? 0)
+  const y = (v: number) => HEIGHT - 2 - (v / max) * (HEIGHT - 4)
   const step = WIDTH / Math.max(1, values.length - 1)
-  const points = values.map(
-    (v, i) => `${(i * step).toFixed(1)},${(HEIGHT - 2 - (v / max) * (HEIGHT - 4)).toFixed(1)}`,
-  )
+  const points = values.map((v, i) => `${(i * step).toFixed(1)},${y(v).toFixed(1)}`)
+  const last = values.at(-1) ?? 0
   return (
     <svg
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       preserveAspectRatio="none"
       className="h-10 w-full overflow-visible"
       role="img"
-      aria-label={`Visitors per hour over the last 24 hours, peaking at ${max.toLocaleString('en')}`}
+      aria-label={`Visitors per day over the last ${values.length} days, peaking at ${peak.toLocaleString('en')}${usual !== null ? `; a usual day is about ${usual.toLocaleString('en')}` : ''}`}
     >
       <polygon
         points={`0,${HEIGHT} ${points.join(' ')} ${WIDTH},${HEIGHT}`}
         className="fill-visitors-soft"
       />
+      {usual !== null && (
+        <line
+          x1={0}
+          x2={WIDTH}
+          y1={y(usual)}
+          y2={y(usual)}
+          strokeWidth={1}
+          strokeDasharray="3 3"
+          vectorEffect="non-scaling-stroke"
+          className="stroke-muted"
+        />
+      )}
       <polyline
         points={points.join(' ')}
         fill="none"
         strokeWidth={1.5}
         strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+        className="stroke-visitors"
+      />
+      {/* A zero-length round-capped line stays a circle where the stretched viewBox would not. */}
+      <line
+        x1={WIDTH}
+        x2={WIDTH}
+        y1={y(last)}
+        y2={y(last)}
+        strokeWidth={5}
+        strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
         className="stroke-visitors"
       />
