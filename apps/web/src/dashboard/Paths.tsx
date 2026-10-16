@@ -183,7 +183,7 @@ function EventList({
 
 function Quiet({ quiet }: { quiet: QuietEvent[] }) {
   return (
-    <div className="grid gap-2 border-t border-line pt-4">
+    <div id="quiet" className="grid scroll-mt-20 gap-2 border-t border-line pt-4">
       <h3 className="m-0 flex items-center gap-2 text-body font-semibold">
         <BellOff
           className={cx('size-4', quiet.length ? 'text-down' : 'text-muted')}

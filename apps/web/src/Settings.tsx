@@ -607,7 +607,7 @@ function AiToday({
       </div>
       {spent && (
         <span className="text-label text-down">
-          Spent. Readings, summaries and patterns resume at midnight UTC.
+          Spent. Briefs, summaries and patterns resume at midnight UTC.
         </span>
       )}
     </div>

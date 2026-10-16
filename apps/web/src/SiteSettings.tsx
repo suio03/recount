@@ -295,7 +295,7 @@ function PublicLink({ site }: { site: Site }) {
     <Panel title="Public link">
       <p className="m-0 text-body text-muted">
         Anyone with the link sees this site's dashboard without signing in: visitors, sources,
-        pages, goals and revenue. Not the AI reading or recorded sessions.
+        pages, goals and revenue. Not the AI brief or recorded sessions.
       </p>
       {link && <CopyBox label="Link" value={link} />}
       <div className="flex flex-wrap items-center gap-2">

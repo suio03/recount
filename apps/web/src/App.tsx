@@ -14,6 +14,7 @@ import {
   type Site,
 } from './api'
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
+import { Brief } from './dashboard/Brief'
 import { FilterBar } from './dashboard/FilterBar'
 import { FunnelPanel } from './dashboard/FunnelPanel'
 import { GoalsPanel } from './dashboard/GoalsPanel'
@@ -21,7 +22,6 @@ import { Overview } from './dashboard/Overview'
 import { Paths } from './dashboard/Paths'
 import { PeriodPicker } from './dashboard/PeriodPicker'
 import { type Period, resolve } from './dashboard/period'
-import { ReadingPanel } from './dashboard/ReadingPanel'
 import { SessionsPanel } from './dashboard/SessionsPanel'
 import { fromSearch, toSearch } from './dashboard/search'
 import { Traffic } from './dashboard/Traffic'
@@ -566,6 +566,13 @@ function Dashboard({
     <>
       {full ? (
         <>
+          <Brief
+            key={`${from}-${to}`}
+            site={site}
+            scope={scope}
+            canWrite={site.role !== 'viewer'}
+            onShow={onShow}
+          />
           <Traffic
             scope={scope}
             timezone={site.timezone}
@@ -588,15 +595,6 @@ function Dashboard({
           ) : (
             <Paths paths={paths.data} domain={site.domain} canEdit={site.role !== 'viewer'} />
           )}
-          {/* Until the brief replaces it, the reading keeps its own scrolling box. */}
-          <div className="relative min-h-0 lg:h-[440px]">
-            <ReadingPanel
-              site={site}
-              scope={scope}
-              canEnable={site.role !== 'viewer'}
-              onShow={onShow}
-            />
-          </div>
         </>
       ) : (
         <Overview scope={scope} />

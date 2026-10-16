@@ -65,7 +65,7 @@ non-direct touch. Payments link to visitors by passing `rc_vid` in checkout meta
 - Third-party secrets (Paddle keys, later Creem) are entered in the dashboard and stored sealed
   with AES-256-GCM under `ENCRYPTION_KEY`, instead of naming an environment variable per source.
 - A site can have a public read-only dashboard at `/share/<token>`, created and turned off by
-  its admins. It serves the main stats, breakdowns, goals and funnels only: no AI reading,
+  its admins. It serves the main stats, breakdowns, goals and funnels only: no AI brief,
   since each costs a model call, and no recordings.
 
 ## Hosted service
@@ -125,8 +125,8 @@ Done:
     last 10) and reviewed under "Drafted by AI" in site settings, or apply on their own; a name a
     person removed or turned down is never added again, and an existing rule is never replaced.
     Readings and replay summaries use the latest draft where `sites/` has no catalog. Built-in
-    questions ("Traffic", "Conversion", "Best channel") are answered in the reading panel from
-    fixed queries, stating the definition code used. Tracking gaps start from blind-spot signals
+    questions ("Traffic", "Conversion", "Best channel") are answered (over MCP since the brief
+    replaced the reading panel) from fixed queries, stating the definition code used. Tracking gaps start from blind-spot signals
     in the last 30 days (long stays with little tracked, clicks on elements with no text,
     checkout with no payments, forms with nothing after them), each needing 10 visitors or
     sessions; the draft gives one gap per signal and at most 2 guesses, marked "Guess".
@@ -166,7 +166,7 @@ Next:
      - per lane: its side events (dismissals, failures) with their counts
      The steps are ordered per visitor within the range, not within one visit, because people sign in on one visit and pay on another. In cookieless mode this collapses to one day. Funnels everywhere now count this way, including the funnel panel and `GET /stats/funnel`. Lanes come from the site's funnels, then from the drafted ones still waiting for review, up to 4. The draft prompt asks for up to 4 funnels covering the main flows, one of them ending at payment. Side events are chosen by code, not drafted: the site's failed and closed key events plus any event whose name reads as a fault, counted among the visitors who reached the lane's first step, leaving out the lane's own steps. When no funnel is defined and nothing is drafted, the section falls back to the event list, with a prompt to add funnels and to have AI draft them, or to turn AI on.
    - **Went quiet.** Code-detected, no model involved: a custom event that has been 0 for 2 to 30 full days up to the last full day, and before it stopped fired on at least 10 of 14 days at 2 or more a day on average. Firing today rules it out. It is site-wide, whatever the filters. Each row shows the event, one sentence written by code, and its last 7 days. It sits under the paths because a broken tag looks the same as a broken feature.
-   - **Brief.** This replaces the reading panel. It is written only when someone clicks "Write this week's brief", never on open. It needs the AI switch, the budget, and admin or above. It is cached per site and range, and shown to everyone until it is rewritten. Its inputs are the detected changes plus the three sections above. It writes 3–6 lines, each marked Fact or Guess and each linking to its section with the filters that show it. Today's automatic reading and its chart annotations go away: the chart markers come from code, and replay summaries and semantics drafts keep their own schedules.
+   - **Brief.** This replaces the reading panel. It is written only when an admin clicks "Write the brief", never on open, and needs the AI switch and the budget. It reads the whole site whatever the filters, so following a line's filters keeps it on screen. It is cached per site and range in `readings` until it is rewritten, and shown to everyone. Code writes the facts: the tried-to-pay totals and up to 8 people with their events, each lane per step, the quiet events, the traffic totals with today against a usual day, and the detected changes with their filters. The model writes 3–6 lines from them, each marked Fact or Guess and citing fact ids; code drops a line citing nothing known or quoting a number its facts lack, and links each line to the section of its first fact, with the filters of a cited change. Built as `GET /stats/brief` (the last one) and `POST /stats/brief` (write), in `brief/`. The automatic reading, its chart annotations and `GET /stats/reading` are gone; the built-in questions stay for MCP (`/stats/question`) and leave the UI until Ask. Replay summaries and semantics drafts keep their own schedules.
    - **Why?** A button on each lane and each card, answered on click and cached. The model gets that lane's or that visitor's counts, plus the property values of its failure events (for example `error_code`), and answers in Fact and Guess lines.
    - **Ask.** A free question. It needs a model loop over read-only query tools, the same ones MCP exposes, so a question's numbers come from queries too. Built last.
    - **Reports.** The existing panels (breakdowns, goals, funnels, event properties, sessions) move unchanged to a Reports view linked at the bottom. Filters set anywhere apply to the whole page.
@@ -174,7 +174,7 @@ Next:
    - Order:
      1. traffic and tried-to-pay, since that is the daily habit (built: `/stats/intent`, per-site `key_events` in migration 0015, the Key events settings panel)
      2. paths and went quiet (built: `/stats/paths`, `stats/paths.ts`, `stats/quiet.ts`)
-     3. the on-click brief, removing the automatic reading
+     3. the on-click brief, removing the automatic reading (built: `/stats/brief`, `brief/`)
      4. Why?
      5. all sites
      6. Ask

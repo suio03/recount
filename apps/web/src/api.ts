@@ -83,7 +83,7 @@ export interface Site {
   name: string
   timezone: string
   currency: string
-  /** Whether the model reads this site: the reading, replay summaries and their patterns. */
+  /** Whether the model reads this site: the brief, replay summaries and their patterns. */
   ai: boolean
   /** ISO time of the site's first event, null before any; where "All time" starts. */
   firstEvent: string | null
@@ -451,67 +451,26 @@ export interface FunnelStats {
   steps: Array<{ name: string; kind: Match['kind']; visitors: number; previous_visitors: number }>
 }
 
-export type Metric =
-  | 'visitors'
-  | 'pageviews'
-  | 'bounce_rate'
-  | 'avg_session_seconds'
-  | 'conversion_rate'
-  | 'revenue'
-  | 'revenue_per_visitor'
+/** Where a line of the brief is shown on the dashboard. */
+export type BriefSection = 'traffic' | 'tried' | 'paths' | 'quiet'
 
-/** One detected change. Numbers come from the database; the reading only cites them. */
-export interface Finding {
-  id: string
-  subject:
-    | { kind: 'total' }
-    | { kind: 'segment'; dimension: Exclude<Dimension, 'page'>; value: string }
-    | { kind: 'goal'; name: string }
-    | {
-        kind: 'segment_goal'
-        dimension: Exclude<Dimension, 'page'>
-        value: string
-        name: string
-      }
-  metric: Metric
-  current: number
-  previous: number
-  change: number | null
-  share?: number
-  /** For a segment's conversion rate: the rate among all visitors in scope. */
-  baseline?: number
-  /** For revenue: the currency `current` and `previous` are minor units of. */
-  currency?: string
-  since?: string
-  filters: Filters
-}
-
-export interface ReadingResult {
-  findings: Finding[]
-  reading: {
-    headline: string
-    claims: Array<{ text: string; evidence: string[] }>
+/** A few lines on the range, written only when someone asks; every figure comes from a query. */
+export interface BriefResult {
+  brief: {
+    range: { from: string; to: string }
+    lines: Array<{
+      kind: 'fact' | 'guess'
+      text: string
+      section: BriefSection
+      /** Filters that show the line, for one resting on a detected change. */
+      filters?: Filters
+    }>
     model: string
     generatedAt: string
   } | null
+  /** Whether a brief can be written, or why the last try failed. */
   status: 'ok' | 'off' | 'unconfigured' | 'key_rejected' | 'no_credit' | 'over_budget' | 'error'
   error?: string
-}
-
-/** Built-in questions, answered from fixed queries the model explains. */
-export const QUESTIONS = {
-  traffic: 'How is traffic?',
-  conversion: 'How is conversion?',
-  channels: 'Which channel brings the best visitors?',
-} as const
-export type Question = keyof typeof QUESTIONS
-
-export interface AnswerResult extends Omit<ReadingResult, 'reading'> {
-  question: Question
-  title: string
-  /** What the answer counts, written by code rather than the model. */
-  definition: string
-  answer: ReadingResult['reading']
 }
 
 export type ReplayReason =
@@ -739,10 +698,8 @@ export const api = {
   funnels: (scope: Scope) =>
     get<{ funnels: Array<{ id: string; name: string }> }>(stats(scope, 'funnels')),
   funnel: (scope: Scope, id: string) => get<FunnelStats>(stats(scope, 'funnel', { id })),
-  reading: (scope: Scope, refresh = false) =>
-    get<ReadingResult>(stats(scope, 'reading', refresh ? { refresh: '1' } : {})),
-  question: (scope: Scope, q: Question, refresh = false) =>
-    get<AnswerResult>(stats(scope, 'question', refresh ? { q, refresh: '1' } : { q })),
+  brief: (scope: Scope) => get<BriefResult>(stats(scope, 'brief')),
+  writeBrief: (scope: Scope) => send<BriefResult>('POST', stats(scope, 'brief'), {}),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
   replayDigest: (scope: Scope, refresh = false) =>
     get<ReplayDigest>(stats(scope, 'replays/digest', refresh ? { refresh: '1' } : {})),

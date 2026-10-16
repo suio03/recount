@@ -31,8 +31,8 @@ export function describe(match: Match) {
 }
 
 /**
- * Dashboard queries keyed by a scope that a goal's rule can change: through the goal filter,
- * which every panel applies, or the goal findings the reading and its cache key carry.
+ * Dashboard queries keyed by a scope that a goal's rule can change, through the goal filter,
+ * which every panel applies.
  */
 const SCOPED_BY_GOALS = new Set([
   'main',
@@ -40,8 +40,7 @@ const SCOPED_BY_GOALS = new Set([
   'goals',
   'intent',
   'funnel',
-  'reading',
-  'question',
+  'paths',
   'replays',
   'replayDigest',
 ])

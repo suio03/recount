@@ -2,24 +2,17 @@ import { and, eq } from 'drizzle-orm'
 import { type Context, Hono } from 'hono'
 import { z } from 'zod'
 import { atLeast } from '../auth'
+import { briefOf, writeBrief } from '../brief'
 import { db } from '../db/postgres'
 import { funnels, goals, type Role, type Site } from '../db/schema'
 import { answerFor, QUESTIONS, type Question } from '../questions'
-import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
-import { draftView } from '../semantics/store'
 import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
-import { eventNamesOf, intentOf, keyEventsOf } from '../stats/intent'
-import {
-  eventListOf,
-  type LaneDefinition,
-  lanesOf,
-  MAX_LANES,
-  sideNames,
-  visitorFunnelOf,
-} from '../stats/paths'
+import { intentOf } from '../stats/intent'
+import { pathsFor } from '../stats/lanes'
+import { visitorFunnelOf } from '../stats/paths'
 import { propertiesOf, propertyOf } from '../stats/properties'
 import {
   goalsOf,
@@ -31,7 +24,6 @@ import {
   sessions,
   totalsOf,
 } from '../stats/queries'
-import { quietEvents } from '../stats/quiet'
 import { intervalOf, isOpen, previousRange, RangeQuery } from '../stats/range'
 import { usualVisitors } from '../stats/usual'
 
@@ -251,43 +243,24 @@ statsRoutes.get('/intent', async (c) => {
  */
 statsRoutes.get('/paths', async (c) => {
   const scope = c.get('scope')
-  const site = scope.site
   if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
-  const [defined, draft, names] = await Promise.all([
-    db
-      .select({ id: funnels.id, name: funnels.name, steps: funnels.steps })
-      .from(funnels)
-      .where(eq(funnels.siteId, site.id))
-      .orderBy(funnels.createdAt)
-      .limit(MAX_LANES),
-    draftView(site),
-    eventNamesOf(site),
-  ])
-  const definitions: LaneDefinition[] = [
-    ...defined.map((f) => ({ ...f, source: 'funnel' as const })),
-    ...(draft?.draft?.funnels ?? [])
-      .filter((f) => f.status === 'new')
-      .map((f) => ({ name: f.name, steps: f.steps, source: 'draft' as const })),
-  ].slice(0, MAX_LANES)
-  const { events } = await keyEventsOf(site, names)
-  const [lanes, list, quiet] = await Promise.all([
-    lanesOf(scope, definitions, sideNames(events, names)),
-    definitions.length ? null : eventListOf(scope),
-    quietEvents(site, scope.range),
-  ])
-  return c.json({ lanes, events: list, ai: site.ai, quiet })
+  return c.json(await pathsFor(scope))
 })
 
-/**
- * What changed and why: detected findings plus the AI reading of them. `refresh=1` rewrites a
- * cached reading. The realtime view moves every minute, so it gets neither.
- */
-statsRoutes.get('/reading', async (c) => {
+/** The brief last written for this range. Opening the dashboard never writes one. */
+statsRoutes.get('/brief', async (c) => {
   const scope = c.get('scope')
-  if (scope.range.since !== undefined) return c.json({ findings: [], reading: null, status: 'off' })
-  const refresh = refreshOf(c)
-  if (refresh === null) return c.json({ error: 'only admins can refresh' }, 403)
-  return c.json(await readingFor(scope, { refresh }))
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  return c.json(await briefOf(scope))
+})
+
+/** Writes the brief for this range, replacing the last one. A model call, so admins only. */
+statsRoutes.post('/brief', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  if (!atLeast(c.get('role'), 'admin'))
+    return c.json({ error: 'only admins can write the brief' }, 403)
+  return c.json(await writeBrief(scope))
 })
 
 /**
