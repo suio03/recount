@@ -8,7 +8,7 @@ import { Panel } from '../ui/Panel'
 import { percent } from './format'
 
 /**
- * A funnel's steps with the visitors who reached each in order within one visit. The change
+ * A funnel's steps with the visitors who reached each in order, on any of their visits. The change
  * compares the whole funnel's conversion with the previous period. Hidden until the site has a
  * funnel.
  */

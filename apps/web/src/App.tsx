@@ -18,6 +18,7 @@ import { FilterBar } from './dashboard/FilterBar'
 import { FunnelPanel } from './dashboard/FunnelPanel'
 import { GoalsPanel } from './dashboard/GoalsPanel'
 import { Overview } from './dashboard/Overview'
+import { Paths } from './dashboard/Paths'
 import { PeriodPicker } from './dashboard/PeriodPicker'
 import { type Period, resolve } from './dashboard/period'
 import { ReadingPanel } from './dashboard/ReadingPanel'
@@ -554,6 +555,12 @@ function Dashboard({
     placeholderData: (prev) => prev,
     enabled: full,
   })
+  const paths = useQuery({
+    queryKey: ['paths', scope],
+    queryFn: () => api.paths(scope),
+    placeholderData: (prev) => prev,
+    enabled: full,
+  })
 
   return (
     <>
@@ -575,6 +582,11 @@ function Dashboard({
               timezone={site.timezone}
               canEdit={site.role !== 'viewer'}
             />
+          )}
+          {paths.isError ? (
+            <p className="text-muted">Could not load the paths: {String(paths.error)}</p>
+          ) : (
+            <Paths paths={paths.data} domain={site.domain} canEdit={site.role !== 'viewer'} />
           )}
           {/* Until the brief replaces it, the reading keeps its own scrolling box. */}
           <div className="relative min-h-0 lg:h-[440px]">
@@ -626,7 +638,8 @@ function Dashboard({
           {...props}
         />
         <GoalsPanel scope={scope} onFilter={onFilter} />
-        <FunnelPanel scope={scope} />
+        {/* Paths count the funnels per visitor in the full view. */}
+        {!full && <FunnelPanel scope={scope} />}
       </div>
     </>
   )

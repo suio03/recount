@@ -273,6 +273,42 @@ export interface Intent extends Omit<KeyEventsSetup, 'names'> {
   people: PayingVisitor[]
 }
 
+export type StepKind = 'page' | 'click' | 'event'
+
+/** A funnel counted per visitor across the range. */
+export interface Lane {
+  name: string
+  /** A funnel someone defined or applied, or one only drafted and waiting for review. */
+  source: 'funnel' | 'draft'
+  id?: string
+  steps: Array<{ name: string; kind: StepKind; visitors: number; previous: number }>
+  /** Failures and give-ups among the visitors who started the lane. */
+  side: Array<{ name: string; visitors: number }>
+}
+
+/** A custom event that fired almost every day and then stopped. */
+export interface QuietEvent {
+  name: string
+  /** Full days at zero, up to the last full day. */
+  days: number
+  /** The last day it fired. */
+  last: string
+  /** Days it fired on, of the 14 before it stopped. */
+  active: number
+  perDay: number
+  /** The last 7 full days, oldest first. */
+  recent: number[]
+}
+
+export interface Paths {
+  lanes: Lane[]
+  /** The custom events, when there are no lanes. */
+  events: Array<{ name: string; visitors: number; previous: number }> | null
+  /** Whether AI analysis is on, which drafts lanes. */
+  ai: boolean
+  quiet: QuietEvent[]
+}
+
 export type Dimension =
   | 'channel'
   | 'referrer'
@@ -408,7 +444,7 @@ export interface EventProperty {
   } | null
 }
 
-/** Visitors who reached each step in order within one visit, now and in the previous period. */
+/** Visitors who reached each step in order on any of their visits, now and in the previous period. */
 export interface FunnelStats {
   id: string
   name: string
@@ -695,6 +731,7 @@ export const api = {
     get<Breakdown>(stats(scope, 'breakdown', { dimension, limit: String(limit) })),
   goals: (scope: Scope) => get<Goals>(stats(scope, 'goals')),
   intent: (scope: Scope) => get<Intent>(stats(scope, 'intent')),
+  paths: (scope: Scope) => get<Paths>(stats(scope, 'paths')),
   properties: (scope: Scope, event: string) =>
     get<EventProperties>(stats(scope, 'properties', { event })),
   property: (scope: Scope, event: string, key: string, limit = 10) =>

@@ -151,39 +151,6 @@ export async function goalsOf(scope: Scope, range: DateRange): Promise<GoalRow[]
   ].sort((a, b) => b.visitors - a.visitors || a.name.localeCompare(b.name))
 }
 
-/** Funnels count visits: a session moves down a step once it reaches the next one, in order. */
-const FUNNEL_WINDOW_MS = 24 * 60 * 60 * 1000
-
-/**
- * Visitors who reached each step of a funnel, in order, within one session in scope. Other
- * events may happen between steps. Each event moves a session at most one step, so a view of
- * `/products/pro` alone does not complete both `/products/*` and `/products/pro`, and a step
- * repeated needs the event twice. `visitors[i]` counts those who got at least to step i.
- */
-export function funnelSql(scope: Scope, steps: Match[], range: DateRange) {
-  const s = sessions(scope, range)
-  const matches = steps.map((m, i) => matchSql(m, `s${i}`))
-  return {
-    sql: `SELECT ${steps.map((_, i) => `uniqExactIf(visitor_id, level >= ${i + 1}) AS s${i}`).join(', ')}
-     FROM (
-       SELECT any(visitor_id) AS visitor_id,
-              windowFunnel(${FUNNEL_WINDOW_MS}, 'strict_once')(
-                toUInt64(toUnixTimestamp64Milli(timestamp)), ${matches.map((m) => m.sql).join(', ')}
-              ) AS level
-       FROM events
-       WHERE ${inRange} AND session_id IN (SELECT session_id FROM (${s.sql}))
-       GROUP BY session_id
-     )`,
-    params: Object.assign({}, s.params, ...matches.map((m) => m.params)),
-  }
-}
-
-export async function funnelOf(scope: Scope, steps: Match[], range: DateRange) {
-  const f = funnelSql(scope, steps, range)
-  const [row] = await rows<Record<string, number>>(f.sql, f.params)
-  return steps.map((_, i) => Number(row?.[`s${i}`] ?? 0))
-}
-
 /**
  * Payments in scope: dated by when they were paid, filtered through the snapshot of the session
  * each one is attributed to. Unattributed payments count only when no filter is active. Like the

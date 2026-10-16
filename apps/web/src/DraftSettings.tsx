@@ -66,7 +66,7 @@ export function DraftSettings({ site }: { site: Site }) {
   const drafting = draft.isPending || semantics.data?.drafting
 
   return (
-    <Panel title="Drafted by AI">
+    <Panel title="Drafted by AI" id="drafts">
       <p className="m-0 text-body text-muted">
         The model reads the last 30 days of {site.domain} and drafts what conversion means here and
         the paths to it. Code checks every part against the data and drops what matches nothing.

@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Site } from '../db/schema'
-import { funnelSql, inRange, type Scope, sessions } from './queries'
+import { visitorFunnelSql } from './paths'
+import { inRange, type Scope, sessions } from './queries'
 
 // Only the SQL is checked; the client would need a database configured.
 vi.mock('../db/clickhouse', () => ({ clickhouse: {} }))
+vi.mock('../db/postgres', () => ({ db: {} }))
 
 const scope: Scope = {
   site: { id: '00000000-0000-0000-0000-000000000000', timezone: 'UTC' } as Site,
@@ -18,9 +20,9 @@ describe('sessions', () => {
   })
 })
 
-describe('funnelSql', () => {
-  it('moves a session at most one step per event', () => {
-    const { sql } = funnelSql(
+describe('visitorFunnelSql', () => {
+  it('moves a visitor at most one step per event, across the range', () => {
+    const { sql } = visitorFunnelSql(
       { ...scope, filters: {} },
       [
         { kind: 'page', path: '/products/*' },
@@ -28,6 +30,7 @@ describe('funnelSql', () => {
       ],
       scope.range,
     )
-    expect(sql).toContain("windowFunnel(86400000, 'strict_once')")
+    expect(sql).toContain("windowFunnel(1209600000, 'strict_once')")
+    expect(sql).toContain('GROUP BY visitor_id')
   })
 })

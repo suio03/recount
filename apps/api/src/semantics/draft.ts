@@ -5,7 +5,8 @@ import type { Site } from '../db/schema'
 import { env } from '../env'
 import { unsupportedNumbers } from '../reading/format'
 import { BUILT_IN_EVENTS, Match, matchSql } from '../stats/goals'
-import { funnelOf, inRange, rows, type Scope } from '../stats/queries'
+import { visitorFunnelOf } from '../stats/paths'
+import { inRange, rows, type Scope } from '../stats/queries'
 import { rangeParams } from '../stats/range'
 import { describeItem, type Inventory } from './inventory'
 import { describeSignal, type Signal } from './signals'
@@ -95,7 +96,7 @@ const Output = z.object({
 })
 
 const MAX_CONVERSIONS = 6
-const MAX_FUNNELS = 2
+const MAX_FUNNELS = 4
 const MAX_GAPS = 8
 /** Gaps no signal points at: the model's guesses of what a site of its kind should track. */
 const MAX_GUESSES = 2
@@ -117,7 +118,7 @@ Conversions:
 - Name each in a few words of plain English, as an action ("Submitted a tool", "Chose Pro").
 
 Funnels:
-- 1 or 2 funnels, each 2 to 5 steps a converting visitor really takes, in order, ending at a primary conversion. A step may use a path pattern for a group of pages ("/tools/*").
+- 1 to 4 funnels covering the site's main flows, each 2 to 5 steps a visitor really takes, in order, ending at a conversion. When the site takes payments, one of them ends at paying or at the step that starts it (checkout). Steps may fall on different visits of the same visitor. A step may use a path pattern for a group of pages ("/tools/*").
 - Every step must be something listed in the inventory. A click and the page it opens are one step, not two: use the page.
 - Steps of a funnel use the same definitions as the conversions where they are the same thing.
 
@@ -273,7 +274,7 @@ export async function checkDraft(
       continue
     }
     if (!numbersOk(label, f.why, evidence)) continue
-    const counts = await funnelOf(
+    const counts = await visitorFunnelOf(
       scope,
       steps.map((s) => s.match as Match),
       inventory.range,

@@ -8,12 +8,20 @@ import { answerFor, QUESTIONS, type Question } from '../questions'
 import { readingFor } from '../reading'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
+import { draftView } from '../semantics/store'
 import { bucketSql, bucketsOf } from '../stats/buckets'
 import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
-import { intentOf } from '../stats/intent'
+import { eventNamesOf, intentOf, keyEventsOf } from '../stats/intent'
+import {
+  eventListOf,
+  type LaneDefinition,
+  lanesOf,
+  MAX_LANES,
+  sideNames,
+  visitorFunnelOf,
+} from '../stats/paths'
 import { propertiesOf, propertyOf } from '../stats/properties'
 import {
-  funnelOf,
   goalsOf,
   inRange,
   payments,
@@ -23,6 +31,7 @@ import {
   sessions,
   totalsOf,
 } from '../stats/queries'
+import { quietEvents } from '../stats/quiet'
 import { intervalOf, isOpen, previousRange, RangeQuery } from '../stats/range'
 import { usualVisitors } from '../stats/usual'
 
@@ -196,8 +205,8 @@ statsRoutes.get('/funnels', async (c) =>
 )
 
 /**
- * One funnel's steps with the visitors who reached each, in order and within one visit, for this
- * range and the one before.
+ * One funnel's steps with the visitors who reached each, in order and on any of their visits in
+ * the range, for this range and the one before.
  */
 statsRoutes.get('/funnel', async (c) => {
   const id = c.req.query('id') ?? ''
@@ -210,8 +219,8 @@ statsRoutes.get('/funnel', async (c) => {
   if (!funnel) return c.json({ error: 'not found' }, 404)
   const matches = funnel.steps.map((s) => s.match)
   const [current, before] = await Promise.all([
-    funnelOf(scope, matches, scope.range),
-    funnelOf(scope, matches, previousRange(scope.range)),
+    visitorFunnelOf(scope, matches, scope.range),
+    visitorFunnelOf(scope, matches, previousRange(scope.range)),
   ])
   return c.json({
     id: funnel.id,
@@ -233,6 +242,40 @@ statsRoutes.get('/intent', async (c) => {
   const scope = c.get('scope')
   if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
   return c.json(await intentOf(scope))
+})
+
+/**
+ * How far people got: up to 4 lanes, from the site's funnels and then the latest draft's new
+ * ones, each counted per visitor across the range with its failures and give-ups beside it.
+ * Without lanes, the custom events instead. Also the events that went quiet.
+ */
+statsRoutes.get('/paths', async (c) => {
+  const scope = c.get('scope')
+  const site = scope.site
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  const [defined, draft, names] = await Promise.all([
+    db
+      .select({ id: funnels.id, name: funnels.name, steps: funnels.steps })
+      .from(funnels)
+      .where(eq(funnels.siteId, site.id))
+      .orderBy(funnels.createdAt)
+      .limit(MAX_LANES),
+    draftView(site),
+    eventNamesOf(site),
+  ])
+  const definitions: LaneDefinition[] = [
+    ...defined.map((f) => ({ ...f, source: 'funnel' as const })),
+    ...(draft?.draft?.funnels ?? [])
+      .filter((f) => f.status === 'new')
+      .map((f) => ({ name: f.name, steps: f.steps, source: 'draft' as const })),
+  ].slice(0, MAX_LANES)
+  const { events } = await keyEventsOf(site, names)
+  const [lanes, list, quiet] = await Promise.all([
+    lanesOf(scope, definitions, sideNames(events, names)),
+    definitions.length ? null : eventListOf(scope),
+    quietEvents(site, scope.range),
+  ])
+  return c.json({ lanes, events: list, ai: site.ai, quiet })
 })
 
 /**

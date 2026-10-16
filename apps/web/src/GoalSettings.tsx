@@ -316,10 +316,11 @@ export function FunnelSettings({ site }: { site: Site }) {
     setDrafts((all) => all.map((d, j) => (j === i ? { ...d, ...change } : d)))
 
   return (
-    <Panel title="Funnels">
+    <Panel title="Funnels" id="funnels">
       <p className="m-0 text-body text-muted">
-        A funnel counts the visitors who reach each step in order within one visit, and where the
-        rest leave. Steps can be goals, custom events or pages.
+        A funnel counts the visitors who reach each step in order, on any of their visits in the
+        range, and where the rest leave. The first four show on the dashboard under How far people
+        got. Steps can be goals, custom events or pages.
       </p>
       {funnels.isError && <ErrorText>{errorOf(funnels.error)}</ErrorText>}
       {(funnels.data?.length ?? 0) > 0 && (
