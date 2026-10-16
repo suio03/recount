@@ -70,7 +70,10 @@ const ENDINGS: Record<Ending, string> = {
 
 const nowBefore = (now: string, before: string) => `now ${now}, before ${before}`
 
-function trafficFacts({ traffic: t, currency }: BriefInputs): Fact[] {
+export function trafficFacts({
+  traffic: t,
+  currency,
+}: Pick<BriefInputs, 'traffic' | 'currency'>): Fact[] {
   const lines = [
     `Visitors: ${nowBefore(count(t.totals.visitors), count(t.previous.visitors))}, change ${signed(change(t.totals.visitors, t.previous.visitors))}`,
     `Pageviews: ${nowBefore(count(t.totals.pageviews), count(t.previous.pageviews))}`,
@@ -90,7 +93,7 @@ function trafficFacts({ traffic: t, currency }: BriefInputs): Fact[] {
 
 const change = (now: number, before: number) => (before ? (now - before) / before : null)
 
-function triedFacts({ intent }: BriefInputs): Fact[] {
+export function triedFacts({ intent }: Pick<BriefInputs, 'intent'>): Fact[] {
   const { events, totals: n, previous: b } = intent
   const facts: Fact[] = []
   const add = (text: string) => facts.push({ id: `i${facts.length + 1}`, section: 'tried', text })
@@ -118,7 +121,7 @@ function triedFacts({ intent }: BriefInputs): Fact[] {
   return facts
 }
 
-function pathFacts({ paths }: BriefInputs): Fact[] {
+export function pathFacts({ paths }: Pick<BriefInputs, 'paths'>): Fact[] {
   const facts: Fact[] = paths.lanes.map((lane, i) => {
     const steps = lane.steps.map((s, j) => {
       const before = lane.steps[j - 1]?.visitors
@@ -143,7 +146,7 @@ function pathFacts({ paths }: BriefInputs): Fact[] {
   return facts
 }
 
-function quietFacts({ paths }: BriefInputs): Fact[] {
+export function quietFacts({ paths }: Pick<BriefInputs, 'paths'>): Fact[] {
   if (!paths.quiet.length)
     return [
       {

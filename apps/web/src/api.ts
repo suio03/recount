@@ -502,6 +502,31 @@ export interface WhyResult {
   error?: string
 }
 
+/** One query the model ran to answer a question; the answer's lines cite it by id. */
+export interface AskStep {
+  id: string
+  tool: string
+  input: Record<string, unknown>
+  /** False when the query failed or its input was refused. */
+  ok: boolean
+}
+
+/** A free question answered from the read-only queries, in lines marked fact or guess. */
+export interface AskAnswer {
+  question: string
+  range: { from: string; to: string }
+  lines: Array<{ kind: 'fact' | 'guess'; text: string; evidence: string[] }>
+  steps: AskStep[]
+  model: string
+  generatedAt: string
+}
+
+export interface AskResult {
+  answer: AskAnswer | null
+  status: BriefResult['status']
+  error?: string
+}
+
 export type ReplayReason =
   | 'paid'
   | 'abandoned_form'
@@ -732,6 +757,10 @@ export const api = {
   why: (scope: Scope, subject: WhySubject) => get<WhyResult>(stats(scope, 'why', subject)),
   writeWhy: (scope: Scope, subject: WhySubject) =>
     send<WhyResult>('POST', stats(scope, 'why', subject), {}),
+  asks: (scope: Scope) =>
+    get<{ asks: AskAnswer[]; status: BriefResult['status'] }>(stats(scope, 'asks')),
+  ask: (scope: Scope, question: string) =>
+    send<AskResult>('POST', stats(scope, 'ask'), { question }),
   replays: (scope: Scope) => get<Replays>(stats(scope, 'replays')),
   replayDigest: (scope: Scope, refresh = false) =>
     get<ReplayDigest>(stats(scope, 'replays/digest', refresh ? { refresh: '1' } : {})),

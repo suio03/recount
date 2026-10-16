@@ -279,7 +279,15 @@ export interface KeyEvents {
   failed: string[]
   closed: string[]
 }
-export type AiKind = 'reading' | 'brief' | 'why' | 'question' | 'summary' | 'digest' | 'semantics'
+export type AiKind =
+  | 'reading'
+  | 'brief'
+  | 'why'
+  | 'ask'
+  | 'question'
+  | 'summary'
+  | 'digest'
+  | 'semantics'
 export type Site = typeof sites.$inferSelect
 export type User = typeof users.$inferSelect
 export type RevenueSource = typeof revenueSources.$inferSelect

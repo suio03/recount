@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { type Context, Hono } from 'hono'
 import { z } from 'zod'
+import { askOf, MAX_QUESTION, recentAsks, writeAsk } from '../ask'
 import { atLeast } from '../auth'
 import { briefOf, writeBrief } from '../brief'
 import { db } from '../db/postgres'
@@ -8,8 +9,9 @@ import { funnels, goals, type Role, type Site } from '../db/schema'
 import { answerFor, QUESTIONS, type Question } from '../questions'
 import { digestFor } from '../replay/digest'
 import { replaysFor } from '../replay/list'
+import { breakdownOf, DIMENSIONS } from '../stats/breakdown'
 import { bucketSql, bucketsOf } from '../stats/buckets'
-import { parseFilters, SESSION_DIMENSIONS } from '../stats/filters'
+import { parseFilters } from '../stats/filters'
 import { intentOf } from '../stats/intent'
 import { pathsFor } from '../stats/lanes'
 import { visitorFunnelOf } from '../stats/paths'
@@ -105,43 +107,20 @@ statsRoutes.get('/main', async (c) => {
 })
 
 const BreakdownQuery = z.object({
-  dimension: z.enum([...SESSION_DIMENSIONS, 'page']),
+  dimension: z.enum(DIMENSIONS),
   limit: z.coerce.number().int().min(1).max(100).default(10),
 })
 
-/**
- * Top values of one dimension, ranked by unique visitors. Empty values are left out. Pages are
- * counted from the pageviews of the sessions in scope. Session dimensions also carry the
- * revenue attributed to each value; pages do not, since one payment's session views many.
- */
+/** Top values of one dimension, ranked by unique visitors; see `breakdownOf`. */
 statsRoutes.get('/breakdown', async (c) => {
   const q = BreakdownQuery.safeParse(c.req.query())
   if (!q.success) return c.json({ error: z.prettifyError(q.error) }, 400)
   const { dimension, limit } = q.data
-  const s = sessions(c.get('scope'))
-  const query =
-    dimension === 'page'
-      ? `SELECT pathname AS value, uniqExact(visitor_id) AS visitors, count() AS pageviews
-         FROM events
-         WHERE ${inRange} AND name = 'pageview' AND session_id IN (SELECT session_id FROM (${s.sql}))
-         GROUP BY value ORDER BY visitors DESC, value LIMIT {limit:UInt32}`
-      : `SELECT ${dimension} AS value, uniqExact(visitor_id) AS visitors, count() AS sessions
-         FROM (${s.sql}) WHERE value != ''
-         GROUP BY value ORDER BY visitors DESC, value LIMIT {limit:UInt32}`
-  const found = await rows<{ value: string; visitors: number }>(query, { ...s.params, limit })
   const scope = c.get('scope')
-  if (dimension === 'page') return c.json({ dimension, currency: scope.site.currency, rows: found })
-  const p = payments(scope)
-  const revenue = await rows<{ value: string; revenue: number }>(
-    `SELECT ${dimension} AS value, sum(amount) AS revenue
-     FROM (${p.sql}) WHERE value IN {values:Array(String)} GROUP BY value`,
-    { ...p.params, values: found.map((r) => r.value) },
-  )
-  const byValue = new Map(revenue.map((r) => [r.value, r.revenue]))
   return c.json({
     dimension,
     currency: scope.site.currency,
-    rows: found.map((r) => ({ ...r, revenue: byValue.get(r.value) ?? 0 })),
+    rows: await breakdownOf(scope, dimension, limit),
   })
 })
 
@@ -295,6 +274,28 @@ statsRoutes.post('/why', async (c) => {
     if (err instanceof WhyMissing) return c.json({ error: err.message }, 404)
     throw err
   }
+})
+
+const AskBody = z.object({ question: z.string().trim().min(3).max(MAX_QUESTION) })
+
+/** The questions last answered for this range, newest first, for everyone who can see the site. */
+statsRoutes.get('/asks', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  return c.json({ asks: await recentAsks(scope), status: (await askOf(scope, '')).status })
+})
+
+/**
+ * Answers a free question for this range, replacing the last answer to it. The model reads the
+ * numbers through the read-only query tools, so admins only, as for the brief.
+ */
+statsRoutes.post('/ask', async (c) => {
+  const scope = c.get('scope')
+  if (scope.range.since !== undefined) return c.json({ error: 'not for the realtime view' }, 400)
+  if (!atLeast(c.get('role'), 'admin')) return c.json({ error: 'only admins can ask' }, 403)
+  const body = AskBody.safeParse(await c.req.json().catch(() => null))
+  if (!body.success) return c.json({ error: z.prettifyError(body.error) }, 400)
+  return c.json(await writeAsk(scope, body.data.question))
 })
 
 /**

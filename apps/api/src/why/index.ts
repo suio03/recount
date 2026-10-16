@@ -130,7 +130,7 @@ export async function writeWhy(scope: Scope, subject: Subject): Promise<WhyRespo
   }
 }
 
-async function laneFactsOf(scope: Scope, name: string): Promise<Fact[]> {
+export async function laneFactsOf(scope: Scope, name: string): Promise<Fact[]> {
   const { definitions, names } = await laneDefinitionsOf(scope.site)
   const definition = definitions.find((d) => d.name === name)
   if (!definition) throw new WhyMissing(`no path named "${name}"`)
@@ -159,7 +159,7 @@ async function laneFactsOf(scope: Scope, name: string): Promise<Fact[]> {
   })
 }
 
-async function visitorFactsOf(scope: Scope, visitor: string): Promise<Fact[]> {
+export async function visitorFactsOf(scope: Scope, visitor: string): Promise<Fact[]> {
   const { site, range } = scope
   const [{ events: key }, { events, profile }, paid, provider] = await Promise.all([
     keyEventsOf(site),

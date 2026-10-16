@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { asc, eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { QUERY_TOOLS, QueryError, runTool } from '../ask/tools'
 import { type KeyPrincipal, keyFrom } from '../auth'
 import { db } from '../db/postgres'
 import { goals, type Site, sites } from '../db/schema'
@@ -87,7 +88,7 @@ const iso = (t: string) => `${t.replace(' ', 'T')}Z`
 
 function server(key: KeyPrincipal, origin: string) {
   const mcp = new McpServer(SERVER, {
-    instructions: `Recount is web analytics. Use these tools to add tracking to a site the right way: read get_tracking_rules first, take work from list_tracking_gaps, check each event you add with verify_event once it has been triggered, then record what it means with define_event. The full rules are also at ${origin}/llms.txt.`,
+    instructions: `Recount is web analytics. Use these tools to add tracking to a site the right way: read get_tracking_rules first, take work from list_tracking_gaps, check each event you add with verify_event once it has been triggered, then record what it means with define_event. The full rules are also at ${origin}/llms.txt. To answer questions about a site's numbers, use the read-only get_* query tools: get_traffic, get_breakdown, get_events, get_event_properties, get_paths, get_path_detail, get_tried_to_pay and get_visitor. They default to the last 30 days and write every figure out; quote them as written.`,
   })
 
   /** Runs a tool, answering its known failures as tool errors the agent can act on. */
@@ -97,7 +98,7 @@ function server(key: KeyPrincipal, origin: string) {
       try {
         return await fn(args)
       } catch (e) {
-        if (e instanceof ToolError || e instanceof DefinitionError)
+        if (e instanceof ToolError || e instanceof DefinitionError || e instanceof QueryError)
           return { ...text(e.message), isError: true }
         throw e
       }
@@ -390,6 +391,27 @@ function server(key: KeyPrincipal, origin: string) {
       },
     ),
   )
+
+  // The read-only queries Ask's model reads the numbers with, over the last 30 days by default.
+  for (const t of QUERY_TOOLS)
+    mcp.registerTool(
+      t.name,
+      {
+        title: t.title,
+        description: t.description,
+        inputSchema: { site: SiteArg, ...t.input },
+        annotations: { readOnlyHint: true },
+      },
+      run(async ({ site: domain, ...input }: { site?: string } & Record<string, unknown>) => {
+        const site = await siteFor(key, domain)
+        const defined = await db
+          .select({ name: goals.name, match: goals.match })
+          .from(goals)
+          .where(eq(goals.siteId, site.id))
+        const range = last30Days(site.timezone)
+        return text(await runTool({ site, goals: defined, range }, t.name, input))
+      }),
+    )
 
   return mcp
 }

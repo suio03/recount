@@ -13,6 +13,7 @@ import {
   type Scope,
   type Site,
 } from './api'
+import { Ask } from './dashboard/Ask'
 import { BreakdownPanel } from './dashboard/BreakdownPanel'
 import { Brief } from './dashboard/Brief'
 import { FilterBar } from './dashboard/FilterBar'
@@ -574,6 +575,14 @@ function Dashboard({
             canWrite={site.role !== 'viewer'}
             onShow={onShow}
           />
+          {site.ai && (
+            <Ask
+              key={`ask-${from}-${to}`}
+              siteId={site.id}
+              scope={scope}
+              canWrite={site.role !== 'viewer'}
+            />
+          )}
           <Traffic
             scope={scope}
             timezone={site.timezone}
