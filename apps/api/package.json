@@ -15,21 +15,21 @@
     "user": "tsx --env-file-if-exists=../../.env src/users/cli.ts"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.24.1",
-    "@hono/node-server": "^2.1.4",
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@clickhouse/client": "^1.25.0",
+    "@hono/node-server": "^2.1.6",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@recount/semantic": "workspace:^",
     "@recount/shared": "workspace:^",
     "@recount/sites": "workspace:^",
     "drizzle-orm": "^0.45.4",
-    "hono": "^4.13.13",
+    "hono": "^4.13.17",
     "isbot": "^5.2.2",
     "postgres": "^3.4.9",
     "ua-parser-js": "^2.0.10",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15"
   }
